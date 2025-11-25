@@ -1,0 +1,239 @@
+name: Rust CI
+
+on:
+  pull_request:
+    branches: [ "master" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  COVERAGE_THRESHOLD: 85
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]' && !startsWith(github.head_ref, 'release-plz-')
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache Rust toolchain
+      uses: Swatinem/rust-cache@v2
+      with:
+        cache-on-failure: true
+
+    - name: Build
+      run: cargo build --verbose
+
+    - name: Run tests
+      run: cargo test --verbose --workspace
+
+    - name: Run clippy
+      run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  coverage:
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]' && !startsWith(github.head_ref, 'release-plz-')
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache Rust toolchain and build artifacts
+      uses: Swatinem/rust-cache@v2
+      with:
+        cache-on-failure: true
+        save-if: true
+
+    - name: Cache tarpaulin
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/cargo-tarpaulin
+        key: ${{ runner.os }}-cargo-tarpaulin-${{ hashFiles('.github/workflows/rust.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-tarpaulin-
+
+    - name: Install tarpaulin
+      run: |
+        if [ ! -f ~/.cargo/bin/cargo-tarpaulin ]; then
+          cargo install cargo-tarpaulin --locked
+        fi
+
+    - name: Generate coverage
+      run: |
+        cargo tarpaulin --verbose --workspace --all-features --timeout 120 \
+          --out xml --out html --output-dir ./coverage
+        echo "COVERAGE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura.xml | head -1 | awk '{print int($1*100)}')" >> $GITHUB_ENV
+
+    - name: Parse per-file coverage
+      run: |
+        python3 << 'EOF'
+        import xml.etree.ElementTree as ET
+        import json
+
+        tree = ET.parse('coverage/cobertura.xml')
+        root = tree.getroot()
+
+        files = []
+        for cls in root.findall('.//class'):
+            filename = cls.get('filename', 'unknown')
+            line_rate = float(cls.get('line-rate', 0))
+            coverage = int(line_rate * 100)
+
+            # Simplify path - remove /home/runner/work/... prefix
+            if 'src/' in filename:
+                filename = filename[filename.index('src/'):]
+
+            files.append({
+                'file': filename,
+                'coverage': coverage
+            })
+
+        # Sort by coverage (lowest first) to highlight problem areas
+        files.sort(key=lambda x: x['coverage'])
+
+        # Save to file
+        with open('coverage_by_file.json', 'w') as f:
+            json.dump(files, f)
+
+        print(f"Parsed {len(files)} files")
+        EOF
+
+    - name: Check coverage threshold
+      id: coverage-check
+      run: |
+        COVERAGE=${{ env.COVERAGE }}
+        THRESHOLD=${{ env.COVERAGE_THRESHOLD }}
+        echo "Coverage: ${COVERAGE}%"
+        echo "Threshold: ${THRESHOLD}%"
+        if [ "$COVERAGE" -lt "$THRESHOLD" ]; then
+          echo "❌ Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
+          echo "pass=false" >> $GITHUB_OUTPUT
+        else
+          echo "✅ Coverage ${COVERAGE}% meets threshold ${THRESHOLD}%"
+          echo "pass=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Comment PR with coverage results
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const fs = require('fs');
+          const coverage = process.env.COVERAGE;
+          const threshold = process.env.COVERAGE_THRESHOLD;
+          const pass = parseInt(coverage) >= parseInt(threshold);
+          const emoji = pass ? '✅' : '❌';
+
+          // Read per-file coverage
+          let filesTable = '';
+          try {
+            const fileData = JSON.parse(fs.readFileSync('coverage_by_file.json', 'utf8'));
+
+            if (fileData.length > 0) {
+              filesTable = '\n\n### 📁 Coverage by File\n\n';
+              filesTable += '| File | Coverage | Status |\n';
+              filesTable += '|------|----------|--------|\n';
+
+              fileData.forEach(item => {
+                const filePass = item.coverage >= parseInt(threshold);
+                const fileEmoji = filePass ? '✅' : '⚠️';
+                const bar = '█'.repeat(Math.floor(item.coverage / 5)) + '░'.repeat(20 - Math.floor(item.coverage / 5));
+                filesTable += `| \`${item.file}\` | ${item.coverage}% ${bar} | ${fileEmoji} |\n`;
+              });
+
+              // Add summary stats
+              const avgCoverage = Math.round(fileData.reduce((sum, f) => sum + f.coverage, 0) / fileData.length);
+              const lowCoverageFiles = fileData.filter(f => f.coverage < parseInt(threshold)).length;
+
+              filesTable += `\n**Summary:** ${fileData.length} files analyzed`;
+              if (lowCoverageFiles > 0) {
+                filesTable += ` | ⚠️ ${lowCoverageFiles} file(s) below threshold`;
+              }
+            }
+          } catch (e) {
+            filesTable = '\n\n_Per-file coverage data not available_\n';
+          }
+
+          const comment = `## ${emoji} Code Coverage Report
+
+          **Overall Coverage:** ${coverage}%
+          **Threshold:** ${threshold}%
+          **Status:** ${pass ? 'PASS' : 'FAIL'}
+
+          ${pass ?
+            '✅ Coverage meets the required threshold!' :
+            '❌ Coverage is below the required threshold. Please add more tests.'}
+          ${filesTable}
+
+          <details>
+          <summary>How to improve coverage</summary>
+
+          1. Run locally: \`cargo tarpaulin --out html\`
+          2. Open \`tarpaulin-report.html\` to see uncovered lines
+          3. Focus on files with ⚠️ - they need more tests
+          4. Add tests for uncovered code paths
+          5. Re-run: \`cargo test\` to verify
+
+          </details>
+
+          ---
+          *Coverage report updated on each commit*
+          `;
+
+          // Find existing coverage comment
+          const comments = await github.rest.issues.listComments({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+          });
+
+          const botComment = comments.data.find(comment =>
+            comment.user.type === 'Bot' &&
+            comment.body.includes('Code Coverage Report')
+          );
+
+          // Update existing comment or create new one
+          if (botComment) {
+            await github.rest.issues.updateComment({
+              comment_id: botComment.id,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            console.log('Updated existing coverage comment');
+          } else {
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            console.log('Created new coverage comment');
+          }
+
+    - name: Archive coverage results
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: code-coverage-report
+        path: |
+          coverage/cobertura.xml
+          coverage/tarpaulin-report.html
+
+    - name: Fail if coverage is below threshold
+      if: steps.coverage-check.outputs.pass == 'false'
+      run: |
+        echo "❌ Coverage check failed - coverage is below the required threshold"
+        exit 1

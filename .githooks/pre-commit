@@ -1,0 +1,26 @@
+#!/bin/bash
+# Pre-commit hook: Run clippy and tests before committing
+
+set -e
+
+echo "🔍 Running clippy checks..."
+cargo clippy --all-targets --all-features -- -D warnings
+
+if [ $? -ne 0 ]; then
+    echo "❌ Clippy checks failed. Fix the warnings above before committing."
+    exit 1
+fi
+
+echo "✅ Clippy checks passed!"
+echo ""
+echo "🧪 Running tests..."
+cargo test --quiet
+
+if [ $? -ne 0 ]; then
+    echo "❌ Tests failed. Fix the failing tests above before committing."
+    exit 1
+fi
+
+echo "✅ All tests passed!"
+echo ""
+echo "✨ Pre-commit checks complete. Your code is ready to commit!"

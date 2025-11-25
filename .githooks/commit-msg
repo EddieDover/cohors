@@ -1,0 +1,39 @@
+#!/bin/bash
+# Enforce conventional commits format
+# Allowed types: feat, fix, refactor, docs, test, chore, perf, style, ci, build, revert
+# Format: type(scope?): subject
+
+COMMIT_MSG=$(cat "$1")
+CONVENTIONAL_COMMIT_REGEX="^(feat|fix|refactor|docs|test|chore|perf|style|ci|build|revert)(\(.+\))?!?: .{1,}$"
+
+if ! [[ $COMMIT_MSG =~ $CONVENTIONAL_COMMIT_REGEX ]]; then
+    echo "❌ Commit message does not follow conventional commits format!"
+    echo ""
+    echo "Expected format:"
+    echo "  type(scope): description"
+    echo ""
+    echo "Allowed types:"
+    echo "  - feat:     A new feature"
+    echo "  - fix:      A bug fix"
+    echo "  - refactor: Code refactoring without feature or bug fix"
+    echo "  - docs:     Documentation changes"
+    echo "  - test:     Adding or updating tests"
+    echo "  - chore:    Maintenance tasks (dependencies, build, etc.)"
+    echo "  - perf:     Performance improvements"
+    echo "  - style:    Code style changes (formatting, etc.)"
+    echo "  - ci:       CI/CD configuration changes"
+    echo "  - build:    Build system changes"
+    echo "  - revert:   Reverting a previous commit"
+    echo ""
+    echo "Examples:"
+    echo "  feat: add user authentication"
+    echo "  fix(auth): handle expired tokens"
+    echo "  docs: update API documentation"
+    echo "  chore: bump dependency versions"
+    echo ""
+    echo "Your commit message:"
+    echo "  $COMMIT_MSG"
+    exit 1
+fi
+
+exit 0
