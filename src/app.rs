@@ -744,4 +744,73 @@ mod tests {
         assert_eq!(app.state.selected(), Some(0));
         assert!(matches!(app.mode, AppMode::FileSystem));
     }
+
+    #[test]
+    fn test_on_tick_receives_source() {
+        let mut app = App::new_test();
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.source_receiver = Some(rx);
+
+        // Create a dummy source
+        let source = rodio::source::Zero::<f32>::new(1, 44100);
+        // Box it
+        let boxed_source: Box<dyn Source<Item = f32> + Send> = Box::new(source);
+        
+        // Send it
+        tx.send(boxed_source).unwrap();
+
+        // Call on_tick
+        app.on_tick();
+
+        // Verify source_receiver is None (consumed)
+        assert!(app.source_receiver.is_none());
+    }
+
+    #[test]
+    fn test_play_radio_sets_receiver() {
+        let mut app = App::new_test();
+        let channel = crate::radio::Channel {
+            id: "test".to_string(),
+            title: "Test Radio".to_string(),
+            description: "Test".to_string(),
+            dj: "DJ".to_string(),
+            genre: "Genre".to_string(),
+            image: None,
+            listeners: "0".to_string(),
+            playlists: vec![],
+        };
+        
+        app.play_radio(channel);
+        assert!(app.source_receiver.is_some());
+    }
+
+    #[test]
+    fn test_radio_navigation() {
+        let mut app = App::new_test();
+        app.mode = AppMode::Radio;
+        
+        // Add dummy stations
+        app.radio_stations.push(crate::radio::Channel {
+            id: "1".to_string(), title: "1".to_string(), description: "".to_string(),
+            dj: "".to_string(), genre: "".to_string(), image: None, listeners: "".to_string(), playlists: vec![]
+        });
+        app.radio_stations.push(crate::radio::Channel {
+            id: "2".to_string(), title: "2".to_string(), description: "".to_string(),
+            dj: "".to_string(), genre: "".to_string(), image: None, listeners: "".to_string(), playlists: vec![]
+        });
+        
+        app.radio_state.select(Some(0));
+        
+        app.next();
+        assert_eq!(app.radio_state.selected(), Some(1));
+        
+        app.next();
+        assert_eq!(app.radio_state.selected(), Some(0)); // Wrap around
+        
+        app.previous();
+        assert_eq!(app.radio_state.selected(), Some(1)); // Wrap around
+        
+        app.previous();
+        assert_eq!(app.radio_state.selected(), Some(0));
+    }
 }
