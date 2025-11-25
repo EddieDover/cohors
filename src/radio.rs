@@ -31,7 +31,10 @@ struct ChannelResponse {
 }
 
 pub async fn fetch_channels() -> Result<Vec<Channel>> {
-    let url = "https://somafm.com/channels.json";
+    fetch_channels_url("https://somafm.com/channels.json").await
+}
+
+async fn fetch_channels_url(url: &str) -> Result<Vec<Channel>> {
     let response = reqwest::get(url).await?;
     let text = response.text().await?;
     parse_channels(&text)
@@ -96,6 +99,33 @@ mod tests {
         assert_eq!(channels[0].id, "groovesalad");
         assert_eq!(channels[0].title, "Groove Salad");
         assert_eq!(channels[0].playlists.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_channels() {
+        let mut server = mockito::Server::new_async().await;
+        let _m = server.mock("GET", "/channels.json")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{ "channels": [] }"#)
+            .create_async().await;
+
+        let url = format!("{}/channels.json", server.url());
+        let channels = fetch_channels_url(&url).await.unwrap();
+        assert_eq!(channels.len(), 0);
+    }
+
+    #[test]
+    fn test_fetch_pls_stream_url() {
+        let mut server = mockito::Server::new();
+        let _m = server.mock("GET", "/stream.pls")
+            .with_status(200)
+            .with_body("File1=http://example.com/stream")
+            .create();
+
+        let url = format!("{}/stream.pls", server.url());
+        let stream_url = fetch_pls_stream_url(&url).unwrap();
+        assert_eq!(stream_url, "http://example.com/stream");
     }
 }
 
