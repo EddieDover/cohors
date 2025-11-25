@@ -20,6 +20,11 @@ jobs:
     steps:
     - uses: actions/checkout@v5
 
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libasound2-dev
+
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
 
@@ -46,6 +51,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libasound2-dev
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
