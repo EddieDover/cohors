@@ -1,7 +1,17 @@
 [package]
 name = "cohors"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+license = "MIT"
+description = "A terminal based music player and internet radio streaming application"
+authors = ["Eddie Dover <ed@eddiedover.dev>"]
+repository = "https://github.com/EddieDover/cohors"
+documentation = "https://docs.rs/cohors"
+homepage = "https://github.com/EddieDover/cohors"
+readme = "README.md"
+keywords = ["music","media", "terminal", "tui"]
+categories = ["command-line-utilities", "multimedia::audio"]
+exclude = ["scripts"]
 
 [dependencies]
 ratatui = "0.29.0"
@@ -10,7 +20,11 @@ rodio = "0.19.0"
 tokio = { version = "1.41.1", features = ["full"] }
 anyhow = "1.0.93"
 spectrum-analyzer = "1.5.0"
+reqwest = { version = "0.12.24", features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
 
 [dev-dependencies]
 hound = "3.5.1"
+mockito = "1.7.0"
 tempfile = "3.23.0"

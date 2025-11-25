@@ -1,7 +1,7 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{BarChart, Block, Borders, Gauge, List, ListItem, Paragraph},
+    widgets::{BarChart, Block, Borders, Gauge, List, ListItem, Paragraph, Clear},
     Frame,
 };
 use std::time::Duration;
@@ -159,18 +159,100 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             f.render_widget(info_paragraph, top_chunks[1]);
         }
         AppMode::Radio => {
-            let block = Block::default().borders(Borders::ALL).title("Internet Radio");
-            let paragraph = Paragraph::new("Radio Mode Placeholder\nPress TAB to switch back to files.")
-                .block(block);
-            f.render_widget(paragraph, chunks[0]);
+            let top_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+                .split(chunks[0]);
+
+            let items: Vec<ListItem> = app
+                .radio_stations
+                .iter()
+                .map(|channel| {
+                    ListItem::new(channel.title.clone())
+                })
+                .collect();
+
+            let list = List::new(items)
+                .block(Block::default().borders(Borders::ALL).title("SomaFM Channels"))
+                .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))
+                .highlight_symbol(">> ");
+            
+            f.render_stateful_widget(list, top_chunks[0], &mut app.radio_state);
+
+            // Right Panel: Info
+            let info_text = if let Some(i) = app.radio_state.selected() {
+                if let Some(channel) = app.radio_stations.get(i) {
+                    format!(
+                        "Title: {}\nDJ: {}\nGenre: {}\nListeners: {}\n\n{}",
+                        channel.title,
+                        channel.dj,
+                        channel.genre,
+                        channel.listeners,
+                        channel.description
+                    )
+                } else {
+                    "No selection".to_string()
+                }
+            } else {
+                "No selection".to_string()
+            };
+            
+            let info_block = Block::default().borders(Borders::ALL).title("Channel Info");
+            let info_paragraph = Paragraph::new(info_text).block(info_block).wrap(ratatui::widgets::Wrap { trim: true });
+            f.render_widget(info_paragraph, top_chunks[1]);
         }
     }
 
     // Help Bar
-    let help_text = " q:Quit | TAB:Mode | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track ";
+    let help_text = " q:Quit | TAB:Switch Mode | h:About | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track ";
     let help_paragraph = Paragraph::new(help_text)
         .style(Style::default().fg(Color::Black).bg(Color::White));
     f.render_widget(help_paragraph, chunks[2]);
+
+    if app.show_about {
+        draw_about_modal(f);
+    }
+}
+
+fn draw_about_modal(f: &mut Frame) {
+    let area = centered_rect(60, 25, f.area());
+    let block = Block::default().title("About").borders(Borders::ALL);
+    let text = [
+        "",
+        "Cohors - A Terminal Music Player",
+        "",
+        "Repo: https://github.com/EddieDover/cohors",
+        "Author: Eddie Dover <ed@eddiedover.dev>",
+        "",
+        "Press 'h' or 'Esc' to close",
+    ].join("\n");
+    
+    let paragraph = Paragraph::new(text)
+        .block(block)
+        .alignment(ratatui::layout::Alignment::Center);
+        
+    f.render_widget(Clear, area); // Clear background
+    f.render_widget(paragraph, area);
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }
 
 #[cfg(test)]
@@ -213,6 +295,16 @@ mod tests {
         app.current_track = Some(PathBuf::from("stream.mp3"));
         app.track_duration = None;
         
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_ui_draw_about() {
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        app.show_about = true;
+
         terminal.draw(|f| draw(f, &mut app)).unwrap();
     }
 

@@ -1,6 +1,7 @@
 mod app;
 mod audio;
 mod ui;
+mod radio;
 
 use std::io;
 use anyhow::Result;
@@ -19,6 +20,12 @@ use app::App;
 async fn main() -> Result<()> {
     // Create app state first (to handle audio init noise before TUI)
     let mut app = App::new();
+
+    // Fetch radio stations
+    if let Ok(channels) = radio::fetch_channels().await {
+        app.radio_stations = channels;
+        app.radio_state.select(Some(0));
+    }
 
     // Setup terminal
     enable_raw_mode()?;
