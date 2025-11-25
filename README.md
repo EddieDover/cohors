@@ -28,6 +28,3 @@ A TUI music player written in Rust.
 This application uses the SomaFM API to provide radio channels.
 **SomaFM** is a listener-supported, commercial-free internet radio station.
 Please support them at [somafm.com](https://somafm.com).
-
-## License
-[MIT](LICENSE)
