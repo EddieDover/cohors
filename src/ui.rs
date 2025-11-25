@@ -159,10 +159,47 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             f.render_widget(info_paragraph, top_chunks[1]);
         }
         AppMode::Radio => {
-            let block = Block::default().borders(Borders::ALL).title("Internet Radio");
-            let paragraph = Paragraph::new("Radio Mode Placeholder\nPress TAB to switch back to files.")
-                .block(block);
-            f.render_widget(paragraph, chunks[0]);
+            let top_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+                .split(chunks[0]);
+
+            let items: Vec<ListItem> = app
+                .radio_stations
+                .iter()
+                .map(|channel| {
+                    ListItem::new(channel.title.clone())
+                })
+                .collect();
+
+            let list = List::new(items)
+                .block(Block::default().borders(Borders::ALL).title("SomaFM Channels"))
+                .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))
+                .highlight_symbol(">> ");
+            
+            f.render_stateful_widget(list, top_chunks[0], &mut app.radio_state);
+
+            // Right Panel: Info
+            let info_text = if let Some(i) = app.radio_state.selected() {
+                if let Some(channel) = app.radio_stations.get(i) {
+                    format!(
+                        "Title: {}\nDJ: {}\nGenre: {}\nListeners: {}\n\n{}",
+                        channel.title,
+                        channel.dj,
+                        channel.genre,
+                        channel.listeners,
+                        channel.description
+                    )
+                } else {
+                    "No selection".to_string()
+                }
+            } else {
+                "No selection".to_string()
+            };
+            
+            let info_block = Block::default().borders(Borders::ALL).title("Channel Info");
+            let info_paragraph = Paragraph::new(info_text).block(info_block).wrap(ratatui::widgets::Wrap { trim: true });
+            f.render_widget(info_paragraph, top_chunks[1]);
         }
     }
 

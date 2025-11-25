@@ -2,6 +2,7 @@ use std::{fs, io, path::PathBuf, time::{Duration, Instant}, sync::{Arc, Mutex}};
 use ratatui::widgets::ListState;
 use rodio::{Decoder, OutputStream, Sink, OutputStreamHandle, Source};
 use crate::audio::AudioAnalyzer;
+use crate::radio::Channel;
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{backend::Backend, Terminal};
 use crate::ui;
@@ -16,6 +17,9 @@ pub struct App {
     pub current_dir: PathBuf,
     pub items: Vec<PathBuf>,
     pub state: ListState,
+    // Radio
+    pub radio_stations: Vec<Channel>,
+    pub radio_state: ListState,
     // Audio
     pub _stream: Option<OutputStream>,
     pub _stream_handle: Option<OutputStreamHandle>,
@@ -30,6 +34,8 @@ pub struct App {
     pub playback_elapsed: Duration,
     // Visualizer
     pub spectrum_data: Arc<Mutex<Vec<(&'static str, u64)>>>,
+    // Async Source Loading
+    pub source_receiver: Option<std::sync::mpsc::Receiver<Box<dyn Source<Item = f32> + Send>>>,
 }
 
 impl App {
@@ -53,6 +59,8 @@ impl App {
             current_dir,
             items: Vec::new(),
             state: ListState::default(),
+            radio_stations: Vec::new(),
+            radio_state: ListState::default(),
             _stream: stream,
             _stream_handle: stream_handle,
             sink,
@@ -64,6 +72,7 @@ impl App {
             playback_start: None,
             playback_elapsed: Duration::from_secs(0),
             spectrum_data: Arc::new(Mutex::new(vec![("", 0); 8])),
+            source_receiver: None,
         };
         app.load_directory();
         app
@@ -77,6 +86,8 @@ impl App {
             current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             items: Vec::new(),
             state: ListState::default(),
+            radio_stations: Vec::new(),
+            radio_state: ListState::default(),
             _stream: None,
             _stream_handle: None,
             sink: Some(sink),
@@ -88,6 +99,7 @@ impl App {
             playback_start: None,
             playback_elapsed: Duration::from_secs(0),
             spectrum_data: Arc::new(Mutex::new(vec![("", 0); 8])),
+            source_receiver: None,
         }
     }
 
@@ -131,44 +143,146 @@ impl App {
     }
 
     pub fn next(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.items.len().saturating_sub(1) {
-                    0
-                } else {
-                    i + 1
-                }
+        match self.mode {
+            AppMode::FileSystem => {
+                let i = match self.state.selected() {
+                    Some(i) => {
+                        if i >= self.items.len().saturating_sub(1) {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.state.select(Some(i));
             }
-            None => 0,
-        };
-        self.state.select(Some(i));
+            AppMode::Radio => {
+                let i = match self.radio_state.selected() {
+                    Some(i) => {
+                        if i >= self.radio_stations.len().saturating_sub(1) {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.radio_state.select(Some(i));
+            }
+        }
     }
 
     pub fn previous(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.items.len().saturating_sub(1)
-                } else {
-                    i - 1
-                }
+        match self.mode {
+            AppMode::FileSystem => {
+                let i = match self.state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            self.items.len().saturating_sub(1)
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.state.select(Some(i));
             }
-            None => 0,
-        };
-        self.state.select(Some(i));
+            AppMode::Radio => {
+                let i = match self.radio_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            self.radio_stations.len().saturating_sub(1)
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.radio_state.select(Some(i));
+            }
+        }
     }
 
     pub fn enter_directory(&mut self) {
-        if let Some(path) = self.state.selected().and_then(|i| self.items.get(i)) {
-            if path.ends_with("..") {
-                self.go_up();
-            } else if path.is_dir() {
-                self.current_dir = path.clone();
-                self.load_directory();
-            } else {
-                // Play music
-                self.play_file(path.clone());
+        match self.mode {
+            AppMode::FileSystem => {
+                if let Some(path) = self.state.selected().and_then(|i| self.items.get(i)) {
+                    if path.ends_with("..") {
+                        self.go_up();
+                    } else if path.is_dir() {
+                        self.current_dir = path.clone();
+                        self.load_directory();
+                    } else {
+                        // Play music
+                        self.play_file(path.clone());
+                    }
+                }
             }
+            AppMode::Radio => {
+                if let Some(channel) = self.radio_state.selected().and_then(|i| self.radio_stations.get(i)) {
+                    self.play_radio(channel.clone());
+                }
+            }
+        }
+    }
+
+    pub fn play_radio(&mut self, channel: crate::radio::Channel) {
+        self.current_track = Some(PathBuf::from(&channel.title));
+        self.is_paused = false;
+        self.playback_start = Some(Instant::now());
+        self.playback_elapsed = Duration::from_secs(0);
+        self.track_duration = None;
+
+        if let Some(sink) = &self.sink {
+            sink.stop(); // Stop current track immediately
+            
+            let (tx, rx) = std::sync::mpsc::channel();
+            self.source_receiver = Some(rx);
+            
+            let spectrum_data = self.spectrum_data.clone();
+            
+            // Spawn a thread to fetch the stream without blocking the UI or panicking tokio
+            std::thread::spawn(move || {
+                // Find best playlist (mp3)
+                let pls_url = channel.playlists.iter()
+                    .find(|p| p.format == "mp3")
+                    .or_else(|| channel.playlists.first())
+                    .map(|p| p.url.clone());
+
+                if let Some(url) = pls_url 
+                    && let Ok(stream_url) = crate::radio::fetch_pls_stream_url(&url) 
+                    && let Ok(response) = reqwest::blocking::get(&stream_url) 
+                {
+                    let reader = io::BufReader::new(response);
+                    let source = Decoder::new(HttpStream { inner: reader });
+                    if let Ok(decoder) = source {
+                        let source = decoder.convert_samples::<f32>();
+                        let sample_rate = source.sample_rate();
+                        
+                        let analyzer = AudioAnalyzer {
+                            input: source,
+                            buffer: Vec::with_capacity(2048),
+                            spectrum_data,
+                            sample_rate,
+                        };
+                        
+                        let _ = tx.send(Box::new(analyzer));
+                    }
+                }
+            });
+        }
+    }
+
+    pub fn on_tick(&mut self) {
+        let source = self.source_receiver.as_ref().and_then(|rx| rx.try_recv().ok());
+
+        if let Some(source) = source {
+            if let Some(sink) = &self.sink {
+                sink.append(source);
+                sink.play();
+            }
+            self.source_receiver = None;
         }
     }
 
@@ -232,6 +346,9 @@ impl App {
     }
 
     pub fn next_track(&mut self) {
+        // Only for FileSystem mode
+        if matches!(self.mode, AppMode::Radio) { return; }
+
         // Find current track index in items
         if let Some(idx) = self.current_track.as_ref().and_then(|cp| self.items.iter().position(|p| p == cp)) {
             // Find next playable file
@@ -247,6 +364,9 @@ impl App {
     }
 
     pub fn previous_track(&mut self) {
+        // Only for FileSystem mode
+        if matches!(self.mode, AppMode::Radio) { return; }
+
         if let Some(idx) = self.current_track.as_ref().and_then(|cp| self.items.iter().position(|p| p == cp)) {
             // Find previous playable file
             for i in (0..idx).rev() {
@@ -267,6 +387,26 @@ impl App {
         }
     }
 }
+
+struct HttpStream<R> {
+    inner: R,
+}
+
+impl<R: io::Read> io::Read for HttpStream<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+impl<R> io::Seek for HttpStream<R> {
+    fn seek(&mut self, _pos: io::SeekFrom) -> io::Result<u64> {
+        // Fake seek. Rodio/Symphonia might call this to check position or skip.
+        // For a live stream, we can't really seek.
+        // We'll return 0 and hope for the best.
+        Ok(0)
+    }
+}
+
 
 pub trait EventSource {
     fn poll(&mut self, timeout: Duration) -> io::Result<bool>;
@@ -289,6 +429,7 @@ pub fn run_app<B: Backend, E: EventSource>(
     events: &mut E,
 ) -> io::Result<()> {
     loop {
+        app.on_tick();
         terminal.draw(|f| ui::draw(f, app))?;
 
         if events.poll(Duration::from_millis(50))? {
