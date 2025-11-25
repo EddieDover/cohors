@@ -2,6 +2,16 @@
 name = "cohors"
 version = "0.2.0"
 edition = "2024"
+license = "MIT"
+description = "A terminal based music player and internet radio streaming application"
+authors = ["Eddie Dover <ed@eddiedover.dev>"]
+repository = "https://github.com/EddieDover/cohors"
+documentation = "https://docs.rs/cohors"
+homepage = "https://github.com/EddieDover/cohors"
+readme = "README.md"
+keywords = ["music","media", "terminal", "tui"]
+categories = ["command-line-utilities", "multimedia::audio"]
+exclude = ["scripts"]
 
 [dependencies]
 ratatui = "0.29.0"

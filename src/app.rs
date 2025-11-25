@@ -36,6 +36,8 @@ pub struct App {
     pub spectrum_data: Arc<Mutex<Vec<(&'static str, u64)>>>,
     // Async Source Loading
     pub source_receiver: Option<std::sync::mpsc::Receiver<Box<dyn Source<Item = f32> + Send>>>,
+    // UI State
+    pub show_about: bool,
 }
 
 impl App {
@@ -73,6 +75,7 @@ impl App {
             playback_elapsed: Duration::from_secs(0),
             spectrum_data: Arc::new(Mutex::new(vec![("", 0); 8])),
             source_receiver: None,
+            show_about: false,
         };
         app.load_directory();
         app
@@ -100,6 +103,7 @@ impl App {
             playback_elapsed: Duration::from_secs(0),
             spectrum_data: Arc::new(Mutex::new(vec![("", 0); 8])),
             source_receiver: None,
+            show_about: false,
         }
     }
 
@@ -435,24 +439,33 @@ pub fn run_app<B: Backend, E: EventSource>(
         if events.poll(Duration::from_millis(50))? {
             let event = events.read()?;
             if let Event::Key(key) = event {
-                match key.code {
-                    KeyCode::Char('q') => return Ok(()),
-                    KeyCode::Tab => {
-                        app.mode = match app.mode {
-                            AppMode::FileSystem => AppMode::Radio,
-                            AppMode::Radio => AppMode::FileSystem,
-                        };
+                if app.show_about {
+                    match key.code {
+                        KeyCode::Char('h') | KeyCode::Esc => app.show_about = false,
+                        KeyCode::Char('q') => return Ok(()),
+                        _ => {}
                     }
-                    KeyCode::Char('j') | KeyCode::Down => app.next(),
-                    KeyCode::Char('k') | KeyCode::Up => app.previous(),
-                    KeyCode::Char('+') | KeyCode::Char('=') => app.change_volume(0.05),
-                    KeyCode::Char('-') => app.change_volume(-0.05),
-                    KeyCode::Left => app.previous_track(),
-                    KeyCode::Right => app.next_track(),
-                    KeyCode::Char(' ') => app.toggle_pause(),
-                    KeyCode::Enter => app.enter_directory(),
-                    KeyCode::Backspace => app.go_up(),
-                    _ => {}
+                } else {
+                    match key.code {
+                        KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char('h') => app.show_about = true,
+                        KeyCode::Tab => {
+                            app.mode = match app.mode {
+                                AppMode::FileSystem => AppMode::Radio,
+                                AppMode::Radio => AppMode::FileSystem,
+                            };
+                        }
+                        KeyCode::Char('j') | KeyCode::Down => app.next(),
+                        KeyCode::Char('k') | KeyCode::Up => app.previous(),
+                        KeyCode::Char('+') | KeyCode::Char('=') => app.change_volume(0.05),
+                        KeyCode::Char('-') => app.change_volume(-0.05),
+                        KeyCode::Left => app.previous_track(),
+                        KeyCode::Right => app.next_track(),
+                        KeyCode::Char(' ') => app.toggle_pause(),
+                        KeyCode::Enter => app.enter_directory(),
+                        KeyCode::Backspace => app.go_up(),
+                        _ => {}
+                    }
                 }
             }
         }
