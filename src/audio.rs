@@ -57,16 +57,27 @@ where
 
                     // Update shared state
                     if let Ok(mut data) = self.spectrum_data.lock() {
-                        *data = vec![
-                            ("Sub", bars[0].clamp(0, 100)),
-                            ("Bass", bars[1].clamp(0, 100)),
-                            ("LowM", bars[2].clamp(0, 100)),
-                            ("Mid", bars[3].clamp(0, 100)),
-                            ("HighM", bars[4].clamp(0, 100)),
-                            ("Pres", bars[5].clamp(0, 100)),
-                            ("Bril", bars[6].clamp(0, 100)),
-                            ("Air", bars[7].clamp(0, 100)),
-                        ];
+                        if data.len() == 8 {
+                            data[0].1 = bars[0].clamp(0, 100);
+                            data[1].1 = bars[1].clamp(0, 100);
+                            data[2].1 = bars[2].clamp(0, 100);
+                            data[3].1 = bars[3].clamp(0, 100);
+                            data[4].1 = bars[4].clamp(0, 100);
+                            data[5].1 = bars[5].clamp(0, 100);
+                            data[6].1 = bars[6].clamp(0, 100);
+                            data[7].1 = bars[7].clamp(0, 100);
+                        } else {
+                            *data = vec![
+                                ("Sub", bars[0].clamp(0, 100)),
+                                ("Bass", bars[1].clamp(0, 100)),
+                                ("LowM", bars[2].clamp(0, 100)),
+                                ("Mid", bars[3].clamp(0, 100)),
+                                ("HighM", bars[4].clamp(0, 100)),
+                                ("Pres", bars[5].clamp(0, 100)),
+                                ("Bril", bars[6].clamp(0, 100)),
+                                ("Air", bars[7].clamp(0, 100)),
+                            ];
+                        }
                     }
                 }
                 self.buffer.clear();
@@ -148,5 +159,28 @@ mod tests {
         assert_eq!(analyzer.channels(), 1); // SineWave is mono
         assert_eq!(analyzer.total_duration(), None); // SineWave is infinite
         assert_eq!(analyzer.current_frame_len(), None);
+    }
+
+    #[test]
+    fn test_audio_analyzer_initialization_empty_vec() {
+        let source = SineWave::new(440.0);
+        // Initialize with empty vector to trigger the else block
+        let spectrum_data = Arc::new(Mutex::new(Vec::new()));
+        
+        let mut analyzer = AudioAnalyzer {
+            input: source,
+            buffer: Vec::new(),
+            spectrum_data: spectrum_data.clone(),
+            sample_rate: 44100,
+        };
+
+        // Consume enough samples to trigger analysis (2048)
+        for _ in 0..2100 {
+            analyzer.next();
+        }
+
+        // Check if spectrum data was updated and resized
+        let data = spectrum_data.lock().unwrap();
+        assert_eq!(data.len(), 8);
     }
 }

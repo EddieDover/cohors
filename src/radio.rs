@@ -45,8 +45,8 @@ pub fn parse_channels(json: &str) -> Result<Vec<Channel>> {
     Ok(channel_response.channels)
 }
 
-pub fn fetch_pls_stream_url(pls_url: &str) -> Result<String> {
-    let content = reqwest::blocking::get(pls_url)?.text()?;
+pub fn fetch_pls_stream_url(client: &reqwest::blocking::Client, pls_url: &str) -> Result<String> {
+    let content = client.get(pls_url).send()?.text()?;
     parse_pls(&content)
 }
 
@@ -124,7 +124,8 @@ mod tests {
             .create();
 
         let url = format!("{}/stream.pls", server.url());
-        let stream_url = fetch_pls_stream_url(&url).unwrap();
+        let client = reqwest::blocking::Client::new();
+        let stream_url = fetch_pls_stream_url(&client, &url).unwrap();
         assert_eq!(stream_url, "http://example.com/stream");
     }
 }
