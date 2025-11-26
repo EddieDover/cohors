@@ -10,7 +10,7 @@ depends=('alsa-lib' 'gcc-libs')
 makedepends=('cargo')
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('81455ee98b2d3265f97ffa0738dd53c9a15cd227a5a9d5a38dff55656effd150')
+sha256sums=('fbfbabba1b7320a17ed9c07a85147cb4685e9bdd05972805bd4aaae6e9b31b3d')
 
 prepare() {
   cd "$pkgname-$pkgver"
