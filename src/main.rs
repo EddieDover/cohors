@@ -16,13 +16,13 @@ use crossterm::{
 };
 use app::App;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     // Create app state first (to handle audio init noise before TUI)
     let mut app = App::new();
 
     // Fetch radio stations
-    if let Ok(channels) = radio::fetch_channels().await {
+    let rt = tokio::runtime::Runtime::new()?;
+    if let Ok(channels) = rt.block_on(radio::fetch_channels()) {
         app.radio_stations = channels;
         app.radio_state.select(Some(0));
     }

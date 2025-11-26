@@ -75,7 +75,10 @@ impl App {
             track_duration: None,
             playback_start: None,
             playback_elapsed: Duration::from_secs(0),
-            spectrum_data: Arc::new(Mutex::new(vec![("", 0); 8])),
+            spectrum_data: Arc::new(Mutex::new(vec![
+                ("Sub", 0), ("Bass", 0), ("LowM", 0), ("Mid", 0),
+                ("HighM", 0), ("Pres", 0), ("Bril", 0), ("Air", 0)
+            ])),
             source_receiver: None,
             http_client: reqwest::blocking::Client::new(),
             show_about: false,
@@ -104,7 +107,10 @@ impl App {
             track_duration: None,
             playback_start: None,
             playback_elapsed: Duration::from_secs(0),
-            spectrum_data: Arc::new(Mutex::new(vec![("", 0); 8])),
+            spectrum_data: Arc::new(Mutex::new(vec![
+                ("Sub", 0), ("Bass", 0), ("LowM", 0), ("Mid", 0),
+                ("HighM", 0), ("Pres", 0), ("Bril", 0), ("Air", 0)
+            ])),
             source_receiver: None,
             http_client: reqwest::blocking::Client::new(),
             show_about: false,

@@ -87,6 +87,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     f.render_widget(gauge, status_layout[1]);
 
     // Right Bottom: Visualizer (Real)
+    let vis_area = bottom_chunks[1];
     let vis_block = Block::default().borders(Borders::ALL).title("Visualizer");
     
     let mut data: Vec<(&str, u64)> = Vec::new();
@@ -102,14 +103,25 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ];
     }
 
+    // Calculate dynamic bar width to fill the container
+    let inner_width = vis_area.width.saturating_sub(2); // Subtract borders
+    let num_bars = data.len() as u16;
+    let bar_gap = 1;
+    let total_gap = bar_gap * (num_bars.saturating_sub(1));
+    let bar_width = if num_bars > 0 {
+        (inner_width.saturating_sub(total_gap)) / num_bars
+    } else {
+        3
+    };
+
     let barchart = BarChart::default()
         .block(vis_block)
         .data(&data)
-        .bar_width(3)
-        .bar_gap(1)
+        .bar_width(bar_width)
+        .bar_gap(bar_gap)
         .bar_style(Style::default().fg(Color::Cyan));
     
-    f.render_widget(barchart, bottom_chunks[1]);
+    f.render_widget(barchart, vis_area);
 
     // Top Panel Content
     match app.mode {
