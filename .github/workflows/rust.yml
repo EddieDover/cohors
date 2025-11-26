@@ -15,7 +15,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: github.actor != 'dependabot[bot]' && !startsWith(github.head_ref, 'release-plz-')
+    if: ${{ !startsWith(github.head_ref, 'release-please-') && github.actor != 'dependabot[bot]' }}
 
     steps:
     - uses: actions/checkout@v5
@@ -44,7 +44,7 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    if: github.actor != 'dependabot[bot]' && !startsWith(github.head_ref, 'release-plz-')
+    if: ${{ !startsWith(github.head_ref, 'release-please-') && github.actor != 'dependabot[bot]' }}
     permissions:
       pull-requests: write
       contents: read
