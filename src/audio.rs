@@ -160,4 +160,27 @@ mod tests {
         assert_eq!(analyzer.total_duration(), None); // SineWave is infinite
         assert_eq!(analyzer.current_frame_len(), None);
     }
+
+    #[test]
+    fn test_audio_analyzer_initialization_empty_vec() {
+        let source = SineWave::new(440.0);
+        // Initialize with empty vector to trigger the else block
+        let spectrum_data = Arc::new(Mutex::new(Vec::new()));
+        
+        let mut analyzer = AudioAnalyzer {
+            input: source,
+            buffer: Vec::new(),
+            spectrum_data: spectrum_data.clone(),
+            sample_rate: 44100,
+        };
+
+        // Consume enough samples to trigger analysis (2048)
+        for _ in 0..2100 {
+            analyzer.next();
+        }
+
+        // Check if spectrum data was updated and resized
+        let data = spectrum_data.lock().unwrap();
+        assert_eq!(data.len(), 8);
+    }
 }
