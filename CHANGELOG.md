@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/EddieDover/Cohors/compare/v0.2.0...v0.2.1) (2025-11-26)
+
+
+### Bug Fixes
+
+* reuse http connection and audio vec to reduce memory consumption. ([#7](https://github.com/EddieDover/Cohors/issues/7)) ([612fa1e](https://github.com/EddieDover/Cohors/commit/612fa1e3703a8c0501ba5b26b489449762dc73e2))
+
 ## [0.2.0](https://github.com/EddieDover/Cohors/compare/v0.1.0...v0.2.0) (2025-11-26)
 
 
