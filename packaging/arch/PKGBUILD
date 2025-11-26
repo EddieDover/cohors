@@ -1,0 +1,33 @@
+# Maintainer: Eddie Dover <ed@eddiedover.dev>
+pkgname=cohors
+pkgver=0.2.1
+pkgrel=1
+pkgdesc="A terminal based music player and internet radio streaming application"
+arch=('x86_64')
+url="https://github.com/EddieDover/cohors"
+license=('GPL3')
+depends=('alsa-lib' 'gcc-libs')
+makedepends=('cargo')
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('81455ee98b2d3265f97ffa0738dd53c9a15cd227a5a9d5a38dff55656effd150')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release --all-features
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 "target/release/$pkgname" "$pkgdir/usr/bin/$pkgname"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
