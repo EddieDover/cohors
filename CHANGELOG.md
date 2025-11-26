@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.2.2](https://github.com/EddieDover/cohors/compare/v0.2.2...v0.2.2) (2025-11-26)
+## [0.2.2](https://github.com/EddieDover/cohors/compare/v0.2.1...v0.2.2) (2025-11-26)
 
 
 ### Features
@@ -13,8 +13,3 @@
 
 * reuse http connection and audio vec to reduce memory consumption. ([#7](https://github.com/EddieDover/cohors/issues/7)) ([612fa1e](https://github.com/EddieDover/cohors/commit/612fa1e3703a8c0501ba5b26b489449762dc73e2))
 * update visualizer layout and dynamic bar width calculation ([#10](https://github.com/EddieDover/cohors/issues/10)) ([81e88ae](https://github.com/EddieDover/cohors/commit/81e88ae72f35d0c041b92dbd33a419cfaa259de5))
-
-
-### Miscellaneous Chores
-
-* release 0.2.2 ([3caef23](https://github.com/EddieDover/cohors/commit/3caef23c5437869cc35160c19c145c7a24ee6539))
