@@ -117,7 +117,10 @@ mod tests {
     #[test]
     fn test_audio_analyzer() {
         let source = SineWave::new(440.0);
-        let spectrum_data = Arc::new(Mutex::new(vec![("", 0); 8]));
+        let spectrum_data = Arc::new(Mutex::new(vec![
+            ("Sub", 0), ("Bass", 0), ("LowM", 0), ("Mid", 0),
+            ("HighM", 0), ("Pres", 0), ("Bril", 0), ("Air", 0)
+        ]));
         
         let mut analyzer = AudioAnalyzer {
             input: source,
@@ -146,7 +149,10 @@ mod tests {
     fn test_audio_analyzer_methods() {
         let source = SineWave::new(440.0);
         let rate = source.sample_rate();
-        let spectrum_data = Arc::new(Mutex::new(vec![("", 0); 8]));
+        let spectrum_data = Arc::new(Mutex::new(vec![
+            ("Sub", 0), ("Bass", 0), ("LowM", 0), ("Mid", 0),
+            ("HighM", 0), ("Pres", 0), ("Bril", 0), ("Air", 0)
+        ]));
         
         let analyzer = AudioAnalyzer {
             input: source,
