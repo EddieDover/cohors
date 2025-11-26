@@ -36,6 +36,8 @@ pub struct App {
     pub spectrum_data: Arc<Mutex<Vec<(&'static str, u64)>>>,
     // Async Source Loading
     pub source_receiver: Option<std::sync::mpsc::Receiver<Box<dyn Source<Item = f32> + Send>>>,
+    // HTTP Client
+    pub http_client: reqwest::blocking::Client,
     // UI State
     pub show_about: bool,
 }
@@ -75,6 +77,7 @@ impl App {
             playback_elapsed: Duration::from_secs(0),
             spectrum_data: Arc::new(Mutex::new(vec![("", 0); 8])),
             source_receiver: None,
+            http_client: reqwest::blocking::Client::new(),
             show_about: false,
         };
         app.load_directory();
@@ -103,6 +106,7 @@ impl App {
             playback_elapsed: Duration::from_secs(0),
             spectrum_data: Arc::new(Mutex::new(vec![("", 0); 8])),
             source_receiver: None,
+            http_client: reqwest::blocking::Client::new(),
             show_about: false,
         }
     }
@@ -245,6 +249,7 @@ impl App {
             self.source_receiver = Some(rx);
             
             let spectrum_data = self.spectrum_data.clone();
+            let client = self.http_client.clone();
             
             // Spawn a thread to fetch the stream without blocking the UI or panicking tokio
             std::thread::spawn(move || {
@@ -255,8 +260,8 @@ impl App {
                     .map(|p| p.url.clone());
 
                 if let Some(url) = pls_url 
-                    && let Ok(stream_url) = crate::radio::fetch_pls_stream_url(&url) 
-                    && let Ok(response) = reqwest::blocking::get(&stream_url) 
+                    && let Ok(stream_url) = crate::radio::fetch_pls_stream_url(&client, &url) 
+                    && let Ok(response) = client.get(&stream_url).send() 
                 {
                     let reader = io::BufReader::new(response);
                     let source = Decoder::new(HttpStream { inner: reader });

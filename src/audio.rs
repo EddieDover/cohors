@@ -57,16 +57,27 @@ where
 
                     // Update shared state
                     if let Ok(mut data) = self.spectrum_data.lock() {
-                        *data = vec![
-                            ("Sub", bars[0].clamp(0, 100)),
-                            ("Bass", bars[1].clamp(0, 100)),
-                            ("LowM", bars[2].clamp(0, 100)),
-                            ("Mid", bars[3].clamp(0, 100)),
-                            ("HighM", bars[4].clamp(0, 100)),
-                            ("Pres", bars[5].clamp(0, 100)),
-                            ("Bril", bars[6].clamp(0, 100)),
-                            ("Air", bars[7].clamp(0, 100)),
-                        ];
+                        if data.len() == 8 {
+                            data[0].1 = bars[0].clamp(0, 100);
+                            data[1].1 = bars[1].clamp(0, 100);
+                            data[2].1 = bars[2].clamp(0, 100);
+                            data[3].1 = bars[3].clamp(0, 100);
+                            data[4].1 = bars[4].clamp(0, 100);
+                            data[5].1 = bars[5].clamp(0, 100);
+                            data[6].1 = bars[6].clamp(0, 100);
+                            data[7].1 = bars[7].clamp(0, 100);
+                        } else {
+                            *data = vec![
+                                ("Sub", bars[0].clamp(0, 100)),
+                                ("Bass", bars[1].clamp(0, 100)),
+                                ("LowM", bars[2].clamp(0, 100)),
+                                ("Mid", bars[3].clamp(0, 100)),
+                                ("HighM", bars[4].clamp(0, 100)),
+                                ("Pres", bars[5].clamp(0, 100)),
+                                ("Bril", bars[6].clamp(0, 100)),
+                                ("Air", bars[7].clamp(0, 100)),
+                            ];
+                        }
                     }
                 }
                 self.buffer.clear();
