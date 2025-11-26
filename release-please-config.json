@@ -1,8 +1,0 @@
-{
-    "packages": {
-        ".": {
-            "release-type": "rust",
-            "skip-github-release": true
-        }
-    }
-}
