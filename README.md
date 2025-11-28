@@ -7,19 +7,6 @@ A TUI music player written in Rust.
 - Audio visualization (Spectrum Analyzer)
 - Internet Radio support (Configurable via radio.json)
 
-## Command Line Arguments
-
-`cohors [OPTIONS] [PATH]`
-
-| Argument | Description |
-| --- | --- |
-| `-v`, `--volume <0-100>` | Set the initial volume (default: 100) |
-| `-r`, `--radio` | Start in Radio mode |
-| `-s`, `--station-file <PATH>` | Path to the station configuration file |
-| `-h`, `--help` | Print help information |
-| `-V`, `--version` | Print version information |
-| `[PATH]` | Path to a file or directory to play on startup |
-
 ## Key Bindings
 
 | Key | Action |
@@ -38,6 +25,19 @@ A TUI music player written in Rust.
 | `←` | Previous Track |
 | `l` | Toggle Loop Mode (Off / Track/ Folder) |
 | `h` | Toggle hidden files in File View Mode |
+
+## Command Line Arguments
+
+`cohors [OPTIONS] [PATH]`
+
+| Argument | Description |
+| --- | --- |
+| `-v`, `--volume <0-100>` | _(Optional)_ Set the initial volume (default: 100) |
+| `-r`, `--radio` | _(Optional)_ Start in Radio mode |
+| `-s`, `--station-file <PATH>` | _(Optional)_ Path to the station configuration file |
+| `-h`, `--help` | Print help information |
+| `-V`, `--version` | Print version information |
+| `[PATH]` | _(Optional)_ Path to a file or directory to play on startup |
 
 ## Radio Configuration
 
