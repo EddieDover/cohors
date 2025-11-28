@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/EddieDover/cohors/compare/v0.3.0...v0.3.1) (2025-11-28)
+
+
+### Bug Fixes
+
+* adjust release configuration ([#21](https://github.com/EddieDover/cohors/issues/21)) ([b61e172](https://github.com/EddieDover/cohors/commit/b61e172a4a27271d142c7e1d64cca2228eca03dc))
+
 ## [0.3.0](https://github.com/EddieDover/cohors/compare/cohors-v0.2.2...cohors-v0.3.0) (2025-11-28)
 
 
