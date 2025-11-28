@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/EddieDover/cohors/compare/cohors-v0.2.2...cohors-v0.3.0) (2025-11-28)
+
+
+### Features
+
+* add looping functionality to audio playback ([#18](https://github.com/EddieDover/cohors/issues/18)) ([8cc5bf8](https://github.com/EddieDover/cohors/commit/8cc5bf84248919bf12c58cf3020ae1e5c1050ca5))
+
 ## [0.2.2](https://github.com/EddieDover/cohors/compare/cohors-v0.2.2...cohors-v0.2.2) (2025-11-26)
 
 
