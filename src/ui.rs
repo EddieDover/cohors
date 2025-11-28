@@ -253,13 +253,24 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
 
     // Help Bar
+    let help_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(10)])
+        .split(chunks[2]);
+
     let help_text = match app.mode {
         AppMode::FileSystem => " q:Quit | TAB:Switch Mode | h:About | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track | l:Loop ",
         AppMode::Radio => " q:Quit | TAB:Switch Mode | h:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol ",
     };
     let help_paragraph =
         Paragraph::new(help_text).style(Style::default().fg(Color::Black).bg(Color::White));
-    f.render_widget(help_paragraph, chunks[2]);
+    f.render_widget(help_paragraph, help_layout[0]);
+
+    let version_text = format!("v{} ", env!("CARGO_PKG_VERSION"));
+    let version_paragraph = Paragraph::new(version_text)
+        .style(Style::default().fg(Color::Black).bg(Color::White))
+        .alignment(ratatui::layout::Alignment::Right);
+    f.render_widget(version_paragraph, help_layout[1]);
 
     if app.show_about {
         draw_about_modal(f);
