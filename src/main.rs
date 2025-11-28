@@ -5,6 +5,7 @@ mod ui;
 
 use anyhow::Result;
 use app::App;
+use clap::Parser;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
@@ -12,10 +13,77 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
+use std::path::PathBuf;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+pub struct Args {
+    /// Set the default volume (0-100)
+    #[arg(short, long)]
+    volume: Option<u8>,
+
+    /// Start in radio mode
+    #[arg(short, long)]
+    radio: bool,
+
+    /// Path to a file or directory to play
+    #[arg(num_args(0..))]
+    path: Vec<String>,
+}
+
+fn apply_args(app: &mut App, args: Args) {
+    // Apply volume
+    if let Some(vol) = args.volume {
+        let vol_f32 = vol as f32 / 100.0;
+        app.volume = vol_f32.clamp(0.0, 1.0);
+        if let Some(sink) = &app.sink {
+            sink.set_volume(app.volume);
+        }
+    }
+
+    // Apply radio mode
+    if args.radio {
+        app.mode = app::AppMode::Radio;
+    }
+
+    // Apply path
+    if !args.path.is_empty() {
+        let path_str = args.path.join(" ");
+        let path = PathBuf::from(path_str);
+        let path = path.canonicalize().unwrap_or(path);
+        if path.is_dir() {
+            app.current_dir = path;
+            app.load_directory();
+            app.loop_mode = app::LoopMode::All;
+
+            // Find first playable file
+            let first_file = app.items.iter().find(|p| p.is_file()).cloned();
+            if let Some(first_file) = first_file {
+                app.play_file(first_file.clone());
+                if let Some(idx) = app.items.iter().position(|x| x == &first_file) {
+                    app.state.select(Some(idx));
+                }
+            }
+        } else if path.is_file() {
+            if let Some(parent) = path.parent() {
+                app.current_dir = parent.to_path_buf();
+                app.load_directory();
+            }
+            app.play_file(path.clone());
+            if let Some(idx) = app.items.iter().position(|x| x == &path) {
+                app.state.select(Some(idx));
+            }
+        }
+    }
+}
 
 fn main() -> Result<()> {
+    let args = Args::parse();
+
     // Create app state first (to handle audio init noise before TUI)
     let mut app = App::new();
+
+    apply_args(&mut app, args);
 
     // Fetch radio stations
     let rt = tokio::runtime::Runtime::new()?;
@@ -49,4 +117,122 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_apply_args_volume() {
+        let mut app = App::new_test();
+        let args = Args {
+            volume: Some(50),
+            radio: false,
+            path: vec![],
+        };
+        apply_args(&mut app, args);
+        assert_eq!(app.volume, 0.5);
+    }
+
+    #[test]
+    fn test_apply_args_radio() {
+        let mut app = App::new_test();
+        let args = Args {
+            volume: None,
+            radio: true,
+            path: vec![],
+        };
+        apply_args(&mut app, args);
+        match app.mode {
+            app::AppMode::Radio => {}
+            _ => panic!("App mode should be Radio"),
+        }
+    }
+
+    #[test]
+    fn test_apply_args_file_path() {
+        let mut app = App::new_test();
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.mp3");
+        File::create(&file_path).unwrap();
+
+        let args = Args {
+            volume: None,
+            radio: false,
+            path: vec![file_path.to_string_lossy().to_string()],
+        };
+        apply_args(&mut app, args);
+
+        assert_eq!(
+            app.current_dir.canonicalize().unwrap(),
+            dir.path().canonicalize().unwrap()
+        );
+        // We can't easily check if it's playing because play_file uses rodio which might fail or be async/threaded
+        // But we can check if the item is selected
+        assert!(
+            app.items
+                .iter()
+                .any(|p| p.file_name() == file_path.file_name())
+        );
+    }
+
+    #[test]
+    fn test_apply_args_file_path_with_spaces() {
+        let mut app = App::new_test();
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test file.mp3");
+        File::create(&file_path).unwrap();
+
+        let full_path_str = file_path.to_string_lossy().to_string();
+        // If the user passes /path/to/test file.mp3 without quotes,
+        // shell gives: /path/to/test, file.mp3
+        
+        // Let's split the full path by space to simulate what clap receives
+        let parts: Vec<String> = full_path_str.split(' ').map(|s| s.to_string()).collect();
+        
+        let args = Args {
+            volume: None,
+            radio: false,
+            path: parts,
+        };
+        
+        apply_args(&mut app, args);
+
+        assert_eq!(
+            app.current_dir.canonicalize().unwrap(),
+            dir.path().canonicalize().unwrap()
+        );
+        assert!(
+            app.items
+                .iter()
+                .any(|p| p.file_name() == file_path.file_name())
+        );
+    }
+
+    #[test]
+    fn test_apply_args_dir_path() {
+        let mut app = App::new_test();
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.mp3");
+        File::create(&file_path).unwrap();
+
+        let args = Args {
+            volume: None,
+            radio: false,
+            path: vec![dir.path().to_string_lossy().to_string()],
+        };
+        apply_args(&mut app, args);
+
+        assert_eq!(
+            app.current_dir.canonicalize().unwrap(),
+            dir.path().canonicalize().unwrap()
+        );
+        match app.loop_mode {
+            app::LoopMode::All => {}
+            _ => panic!("Loop mode should be All"),
+        }
+    }
 }
