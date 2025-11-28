@@ -15,7 +15,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use std::path::PathBuf;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
     /// Set the default volume (0-100)
@@ -25,6 +25,10 @@ pub struct Args {
     /// Start in radio mode
     #[arg(short, long)]
     radio: bool,
+
+    /// Path to the station configuration file
+    #[arg(short = 's', long = "station-file")]
+    station_file: Option<String>,
 
     /// Path to a file or directory to play
     #[arg(num_args(0..))]
@@ -83,14 +87,24 @@ fn main() -> Result<()> {
     // Create app state first (to handle audio init noise before TUI)
     let mut app = App::new();
 
-    apply_args(&mut app, args);
+    apply_args(&mut app, args.clone());
 
     // Fetch radio stations
+    println!("Loading radio stations...");
     let rt = tokio::runtime::Runtime::new()?;
-    if let Ok(channels) = rt.block_on(radio::fetch_channels()) {
-        app.radio_stations = channels;
-        app.radio_state.select(Some(0));
+    let station_file = args.station_file.map(PathBuf::from);
+    match rt.block_on(radio::fetch_all_stations(station_file)) {
+        Ok(groups) => {
+            println!("Loaded {} groups", groups.len());
+            app.radio_groups = groups;
+            app.radio_state.select(Some(0));
+        }
+        Err(e) => {
+            eprintln!("Failed to load radio stations: {}", e);
+        }
     }
+    // Wait a bit to see the message before TUI starts
+    std::thread::sleep(std::time::Duration::from_secs(2));
 
     // Setup terminal
     enable_raw_mode()?;
@@ -131,6 +145,7 @@ mod tests {
         let args = Args {
             volume: Some(50),
             radio: false,
+            station_file: None,
             path: vec![],
         };
         apply_args(&mut app, args);
@@ -143,6 +158,7 @@ mod tests {
         let args = Args {
             volume: None,
             radio: true,
+            station_file: None,
             path: vec![],
         };
         apply_args(&mut app, args);
@@ -162,6 +178,7 @@ mod tests {
         let args = Args {
             volume: None,
             radio: false,
+            station_file: None,
             path: vec![file_path.to_string_lossy().to_string()],
         };
         apply_args(&mut app, args);
@@ -189,16 +206,17 @@ mod tests {
         let full_path_str = file_path.to_string_lossy().to_string();
         // If the user passes /path/to/test file.mp3 without quotes,
         // shell gives: /path/to/test, file.mp3
-        
+
         // Let's split the full path by space to simulate what clap receives
         let parts: Vec<String> = full_path_str.split(' ').map(|s| s.to_string()).collect();
-        
+
         let args = Args {
             volume: None,
             radio: false,
+            station_file: None,
             path: parts,
         };
-        
+
         apply_args(&mut app, args);
 
         assert_eq!(
@@ -222,6 +240,7 @@ mod tests {
         let args = Args {
             volume: None,
             radio: false,
+            station_file: None,
             path: vec![dir.path().to_string_lossy().to_string()],
         };
         apply_args(&mut app, args);
