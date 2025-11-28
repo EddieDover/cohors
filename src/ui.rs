@@ -43,6 +43,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     let (status_text, ratio, label) = if let Some(err) = &app.last_error {
         (format!("Error: {}", err), 0.0, String::new())
+    } else if app.source_receiver.is_some() {
+        ("Loading...".to_string(), 0.0, "Loading...".to_string())
     } else if let Some(path) = &app.current_track {
         let name = path.file_name().unwrap_or_default().to_string_lossy();
         let state = if app.is_paused { "Paused" } else { "Playing" };
