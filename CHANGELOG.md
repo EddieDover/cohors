@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/EddieDover/cohors/compare/v0.5.0...v0.5.1) (2025-11-28)
+
+
+### Bug Fixes
+
+* improve error handling for unsupported streams ([358c2b4](https://github.com/EddieDover/cohors/commit/358c2b488140f9365319ee3c60412f6b97b09cc2))
+* remove image handling from radio stations and related UI components ([358c2b4](https://github.com/EddieDover/cohors/commit/358c2b488140f9365319ee3c60412f6b97b09cc2))
+
 ## [0.5.0](https://github.com/EddieDover/cohors/compare/v0.4.0...v0.5.0) (2025-11-28)
 
 
