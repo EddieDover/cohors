@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/EddieDover/cohors/compare/v0.5.2...v0.5.3) (2025-11-28)
+
+
+### Bug Fixes
+
+* fix stream url handling ([#34](https://github.com/EddieDover/cohors/issues/34)) ([d221fcc](https://github.com/EddieDover/cohors/commit/d221fccafa9a173b36cce563a1b43087bda4b1fd))
+
 ## [0.5.2](https://github.com/EddieDover/cohors/compare/v0.5.1...v0.5.2) (2025-11-28)
 
 
