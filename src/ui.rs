@@ -285,12 +285,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                         if selected_opt == Some(current_idx) {
                             selected_item_info = Some((
                                 format!(
-                                    "Name: {}\nTags: {}\nLast Playing: {}\nHomepage: {}\nImage: {}",
+                                    "Name: {}\nTags: {}\nLast Playing: {}\nHomepage: {}",
                                     station.name,
                                     station.tags.as_deref().unwrap_or(""),
                                     station.last_playing.as_deref().unwrap_or(""),
                                     station.homepage.as_deref().unwrap_or(""),
-                                    station.image.as_deref().unwrap_or("")
                                 ),
                                 station.description.as_deref().unwrap_or("").to_string(),
                             ));
@@ -333,70 +332,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
             let info_block = Block::default().borders(Borders::ALL).title("Station Info");
 
-            // Check for image
-            let mut image_widget = None;
-            let mut image_url_to_load = None;
-
-            if let Some(idx) = selected_opt {
-                let mut curr = 0;
-                for group in &app.radio_groups {
-                    if curr == idx {
-                        break;
-                    }
-                    curr += 1;
-                    if group.is_expanded {
-                        if idx < curr + group.stations.len() {
-                            let station = &group.stations[idx - curr];
-                            if let Some(url) = &station.image
-                                && !url.is_empty()
-                            {
-                                image_url_to_load = Some(url.clone());
-                            }
-                            break;
-                        }
-                        curr += group.stations.len();
-                    }
-                }
-            }
-
-            if let Some(url) = image_url_to_load {
-                if !app.image_cache.contains_key(&url) {
-                    app.trigger_image_load(url.clone());
-                }
-
-                if let Some(img) = app.image_cache.get(&url)
-                    && let Some(picker) = &mut app.picker
-                {
-                    image_widget = Some((picker.new_resize_protocol(img.clone()), img));
-                }
-            }
-
-            if let Some((mut protocol, _img)) = image_widget {
-                // Split info panel into text and image
-                let info_chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Min(10), Constraint::Percentage(50)].as_ref())
-                    .split(top_chunks[1]);
-
-                let info_paragraph = Paragraph::new(full_text)
-                    .block(info_block)
-                    .wrap(ratatui::widgets::Wrap { trim: true });
-                f.render_widget(info_paragraph, info_chunks[0]);
-
-                let image_block = Block::default().borders(Borders::ALL).title("Cover");
-                let image_area = image_block.inner(info_chunks[1]);
-                f.render_widget(image_block, info_chunks[1]);
-
-                f.render_widget(Clear, image_area);
-
-                let image = ratatui_image::StatefulImage::default();
-                f.render_stateful_widget(image, image_area, &mut protocol);
-            } else {
-                let info_paragraph = Paragraph::new(full_text)
-                    .block(info_block)
-                    .wrap(ratatui::widgets::Wrap { trim: true });
-                f.render_widget(info_paragraph, top_chunks[1]);
-            }
+            let info_paragraph = Paragraph::new(full_text)
+                .block(info_block)
+                .wrap(ratatui::widgets::Wrap { trim: true });
+            f.render_widget(info_paragraph, top_chunks[1]);
         }
     }
 
@@ -573,7 +512,6 @@ mod tests {
                 description: None,
                 homepage: None,
                 tags: None,
-                image: None,
                 last_playing: None,
             }],
             is_expanded: true,
@@ -598,7 +536,6 @@ mod tests {
                 description: Some("Desc".to_string()),
                 homepage: None,
                 tags: None,
-                image: None,
                 last_playing: None,
             });
         }
@@ -621,40 +558,6 @@ mod tests {
     }
 
     #[test]
-    fn test_ui_draw_radio_with_image() {
-        let backend = TestBackend::new(100, 50);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let mut app = App::new_test();
-        app.mode = AppMode::Radio;
-
-        // Setup a station with an image URL
-        let station_url = "http://example.com/image.png".to_string();
-        app.radio_groups.push(crate::radio::RadioGroup {
-            title: "Test Group".to_string(),
-            stations: vec![crate::radio::RadioStation {
-                name: "Test Station".to_string(),
-                url: "http://test.com".to_string(),
-                description: None,
-                homepage: None,
-                tags: None,
-                image: Some(station_url.clone()),
-                last_playing: None,
-            }],
-            is_expanded: true,
-        });
-        app.radio_state.select(Some(1)); // Select the station
-
-        // Manually populate the image cache
-        let img = image::DynamicImage::new_rgb8(10, 10);
-        app.image_cache.insert(station_url.clone(), img);
-
-        // Manually set a picker (using Halfblocks for test environment safety)
-        app.picker = Some(ratatui_image::picker::Picker::from_fontsize((8, 16)));
-
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
-    }
-
-    #[test]
     fn test_ui_draw_radio_scrolling_optimization() {
         let backend = TestBackend::new(100, 10); // Very short height
         let mut terminal = Terminal::new(backend).unwrap();
@@ -670,7 +573,6 @@ mod tests {
                 description: None,
                 homepage: None,
                 tags: None,
-                image: None,
                 last_playing: None,
             });
         }
@@ -689,7 +591,6 @@ mod tests {
                 description: None,
                 homepage: None,
                 tags: None,
-                image: None,
                 last_playing: None,
             });
         }
@@ -708,34 +609,6 @@ mod tests {
     }
 
     #[test]
-    fn test_ui_draw_radio_image_loading() {
-        let backend = TestBackend::new(100, 50);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let mut app = App::new_test();
-        app.mode = AppMode::Radio;
-
-        let station_url = "http://example.com/image.png".to_string();
-        app.radio_groups.push(crate::radio::RadioGroup {
-            title: "Test Group".to_string(),
-            stations: vec![crate::radio::RadioStation {
-                name: "Test Station".to_string(),
-                url: "http://test.com".to_string(),
-                description: None,
-                homepage: None,
-                tags: None,
-                image: Some(station_url.clone()),
-                last_playing: None,
-            }],
-            is_expanded: true,
-        });
-        app.radio_state.select(Some(1));
-
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
-
-        assert!(app.image_loading.contains(&station_url));
-    }
-
-    #[test]
     fn test_ui_draw_visualizer_empty_data() {
         let backend = TestBackend::new(100, 50);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -744,7 +617,7 @@ mod tests {
         app.is_paused = false;
         // Force empty spectrum data
         *app.spectrum_data.lock().unwrap() = Vec::new();
-        
+
         terminal.draw(|f| draw(f, &mut app)).unwrap();
     }
 
@@ -754,7 +627,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         let mut app = App::new_test();
         app.mode = AppMode::Radio;
-        
+
         // Add enough items
         let mut stations = Vec::new();
         for i in 0..20 {
@@ -764,7 +637,6 @@ mod tests {
                 description: None,
                 homepage: None,
                 tags: None,
-                image: None,
                 last_playing: None,
             });
         }
@@ -773,13 +645,13 @@ mod tests {
             stations,
             is_expanded: true,
         });
-        
+
         // Set offset to 10, selected to 5
         app.radio_state = app.radio_state.clone().with_offset(10);
         app.radio_state.select(Some(5));
-        
+
         terminal.draw(|f| draw(f, &mut app)).unwrap();
-        
+
         // Offset should become 5
         assert_eq!(app.radio_state.offset(), 5);
     }

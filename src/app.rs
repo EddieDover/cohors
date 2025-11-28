@@ -2,17 +2,19 @@ use crate::audio::AudioAnalyzer;
 use crate::radio::{RadioGroup, RadioStation};
 use crate::ui;
 use crossterm::event::{self, Event, KeyCode};
-use image::DynamicImage;
 use ratatui::widgets::ListState;
 use ratatui::{Terminal, backend::Backend};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::{
-    collections::{HashMap, HashSet},
     fs, io,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+
+pub type AudioSource = Box<dyn Source<Item = f32> + Send>;
+pub type SourceResult = Result<AudioSource, String>;
+pub type SourceReceiver = std::sync::mpsc::Receiver<SourceResult>;
 
 pub enum AppMode {
     FileSystem,
@@ -48,8 +50,7 @@ pub struct App {
     // Visualizer
     pub spectrum_data: Arc<Mutex<Vec<(&'static str, u64)>>>,
     // Async Source Loading
-    pub source_receiver:
-        Option<std::sync::mpsc::Receiver<Result<Box<dyn Source<Item = f32> + Send>, String>>>,
+    pub source_receiver: Option<SourceReceiver>,
     // HTTP Client
     pub http_client: reqwest::blocking::Client,
     // UI State
@@ -57,12 +58,6 @@ pub struct App {
     pub show_hidden: bool,
     // Looping Mode
     pub loop_mode: LoopMode,
-    // Image Cache
-    pub image_cache: HashMap<String, DynamicImage>,
-    pub image_loading: HashSet<String>,
-    pub image_receiver: Option<std::sync::mpsc::Receiver<(String, DynamicImage)>>,
-    pub image_sender: std::sync::mpsc::Sender<(String, DynamicImage)>,
-    pub picker: Option<ratatui_image::picker::Picker>,
 }
 
 impl App {
@@ -78,18 +73,6 @@ impl App {
         let volume = 1.0;
         if let Some(s) = &sink {
             s.set_volume(volume);
-        }
-
-        let (tx, rx) = std::sync::mpsc::channel();
-        let mut picker = None;
-        // Try to create a picker. This might fail if not in a terminal, but we'll try.
-        // We use from_query_stdio which is generally safe.
-        if let Ok(p) = ratatui_image::picker::Picker::from_query_stdio() {
-            picker = Some(p);
-        } else {
-            // Fallback or just don't show images
-            // Try a default one if termios fails (e.g. in tests or weird envs)
-            // picker = Some(ratatui_image::picker::Picker::new(ratatui_image::picker::Protocol::Halfblocks));
         }
 
         let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -125,11 +108,6 @@ impl App {
             show_about: false,
             show_hidden: false,
             loop_mode: LoopMode::Off,
-            image_cache: HashMap::new(),
-            image_loading: HashSet::new(),
-            image_receiver: Some(rx),
-            image_sender: tx,
-            picker,
         };
         app.load_directory();
         app
@@ -138,7 +116,6 @@ impl App {
     #[cfg(test)]
     pub fn new_test() -> App {
         let (sink, _queue) = Sink::new_idle();
-        let (tx, rx) = std::sync::mpsc::channel();
         App {
             mode: AppMode::FileSystem,
             current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
@@ -171,11 +148,6 @@ impl App {
             show_about: false,
             show_hidden: false,
             loop_mode: LoopMode::Off,
-            image_cache: HashMap::new(),
-            image_loading: HashSet::new(),
-            image_receiver: Some(rx),
-            image_sender: tx,
-            picker: None,
         }
     }
 
@@ -418,25 +390,6 @@ impl App {
         }
     }
 
-    pub fn trigger_image_load(&mut self, url: String) {
-        if self.image_cache.contains_key(&url) || self.image_loading.contains(&url) {
-            return;
-        }
-
-        self.image_loading.insert(url.clone());
-        let sender = self.image_sender.clone();
-        let client = self.http_client.clone();
-
-        std::thread::spawn(move || {
-            if let Ok(response) = client.get(&url).send()
-                && let Ok(bytes) = response.bytes()
-                && let Ok(img) = image::load_from_memory(&bytes)
-            {
-                let _ = sender.send((url, img));
-            }
-        });
-    }
-
     pub fn on_tick(&mut self) {
         let source_result = self
             .source_receiver
@@ -459,14 +412,6 @@ impl App {
                 }
             }
             self.source_receiver = None;
-        }
-
-        // Check for loaded images
-        if let Some(rx) = &self.image_receiver {
-            while let Ok((url, img)) = rx.try_recv() {
-                self.image_cache.insert(url.clone(), img);
-                self.image_loading.remove(&url);
-            }
         }
 
         // Check for auto-advance
@@ -1037,7 +982,6 @@ mod tests {
             description: Some("Test".to_string()),
             homepage: None,
             tags: None,
-            image: None,
             last_playing: None,
         };
 
@@ -1059,7 +1003,6 @@ mod tests {
                 description: None,
                 homepage: None,
                 tags: None,
-                image: None,
                 last_playing: None,
             }],
             is_expanded: true,
@@ -1218,23 +1161,6 @@ mod tests {
     }
 
     #[test]
-    fn test_on_tick_receives_image() {
-        let mut app = App::new_test();
-        let (tx, rx) = std::sync::mpsc::channel();
-        app.image_receiver = Some(rx);
-
-        let url = "http://test.com/image.png".to_string();
-        let img = image::DynamicImage::new_rgb8(1, 1);
-
-        tx.send((url.clone(), img)).unwrap();
-
-        app.on_tick();
-
-        assert!(app.image_cache.contains_key(&url));
-        assert!(!app.image_loading.contains(&url));
-    }
-
-    #[test]
     fn test_http_stream() {
         use std::io::{Read, Seek, SeekFrom};
         let data = b"Hello World";
@@ -1252,18 +1178,6 @@ mod tests {
     }
 
     #[test]
-    fn test_trigger_image_load_cached() {
-        let mut app = App::new_test();
-        let url = "http://test.com/image.png".to_string();
-        app.image_cache
-            .insert(url.clone(), image::DynamicImage::new_rgb8(1, 1));
-
-        // Should return immediately
-        app.trigger_image_load(url.clone());
-        assert!(!app.image_loading.contains(&url));
-    }
-
-    #[test]
     fn test_play_radio_no_sink() {
         let mut app = App::new_test();
         app.sink = None;
@@ -1273,7 +1187,6 @@ mod tests {
             description: None,
             homepage: None,
             tags: None,
-            image: None,
             last_playing: None,
         };
 
@@ -1319,48 +1232,10 @@ mod tests {
     }
 
     #[test]
-    fn test_trigger_image_load_success() {
-        let mut server = mockito::Server::new();
-        let _m = server.mock("GET", "/image.png")
-            .with_status(200)
-            .with_header("content-type", "image/png")
-            .with_body(&[0u8; 10]) // Invalid image data, but we can check if it tries to load
-            .create();
-
-        let url = format!("{}/image.png", server.url());
-        let mut app = App::new_test();
-        
-        // We need a real image to pass image::load_from_memory
-        // Let's create a tiny valid PNG
-        let mut img_buf = Vec::new();
-        image::DynamicImage::new_rgb8(1, 1).write_to(&mut std::io::Cursor::new(&mut img_buf), image::ImageFormat::Png).unwrap();
-        
-        let _m = server.mock("GET", "/valid.png")
-            .with_status(200)
-            .with_body(img_buf)
-            .create();
-            
-        let url = format!("{}/valid.png", server.url());
-        
-        app.trigger_image_load(url.clone());
-        
-        // Wait for thread
-        std::thread::sleep(Duration::from_millis(100));
-        
-        // Check receiver
-        if let Some(rx) = &app.image_receiver {
-            if let Ok((recv_url, _)) = rx.try_recv() {
-                assert_eq!(recv_url, url);
-            } else {
-                // It might take longer or fail if thread panicked
-            }
-        }
-    }
-
-    #[test]
     fn test_play_radio_thread() {
         let mut server = mockito::Server::new();
-        let _m = server.mock("GET", "/stream")
+        let _m = server
+            .mock("GET", "/stream")
             .with_status(200)
             .with_body("fake audio data")
             .create();
@@ -1373,7 +1248,6 @@ mod tests {
             description: None,
             homepage: None,
             tags: None,
-            image: None,
             last_playing: None,
         };
 
