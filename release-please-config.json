@@ -2,7 +2,8 @@
   "packages": {
     ".": {
       "release-type": "rust",
-      "package-name": "cohors"
+      "package-name": "cohors",
+      "include-component-in-tag": false
     }
   }
 }
