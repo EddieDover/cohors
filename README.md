@@ -7,6 +7,18 @@ A TUI music player written in Rust.
 - Audio visualization (Spectrum Analyzer)
 - Internet Radio support (SomaFM)
 
+## Command Line Arguments
+
+`cohors [OPTIONS] [PATH]`
+
+| Argument | Description |
+| --- | --- |
+| `-v`, `--volume <0-100>` | Set the initial volume (default: 100) |
+| `-r`, `--radio` | Start in Radio mode |
+| `-h`, `--help` | Print help information |
+| `-V`, `--version` | Print version information |
+| `[PATH]` | Path to a file or directory to play on startup |
+
 ## Key Bindings
 
 | Key | Action |

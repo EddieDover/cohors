@@ -82,7 +82,13 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         };
 
         (
-            format!("{}: {} (Vol: {:.0}%) [{}]", state, name, app.volume * 100.0, loop_status),
+            format!(
+                "{}: {} (Vol: {:.0}%) [{}]",
+                state,
+                name,
+                app.volume * 100.0,
+                loop_status
+            ),
             ratio,
             time_str,
         )
@@ -259,8 +265,12 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .split(chunks[2]);
 
     let help_text = match app.mode {
-        AppMode::FileSystem => " q:Quit | TAB:Switch Mode | h:About | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track | l:Loop ",
-        AppMode::Radio => " q:Quit | TAB:Switch Mode | h:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol ",
+        AppMode::FileSystem => {
+            " q:Quit | TAB:Switch Mode | h:About | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track | l:Loop "
+        }
+        AppMode::Radio => {
+            " q:Quit | TAB:Switch Mode | h:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol "
+        }
     };
     let help_paragraph =
         Paragraph::new(help_text).style(Style::default().fg(Color::Black).bg(Color::White));

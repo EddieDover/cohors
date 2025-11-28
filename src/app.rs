@@ -973,7 +973,7 @@ mod tests {
 
         // Play last track
         app.current_track = Some(p2.clone());
-        
+
         // Next track should wrap to first
         app.next_track();
         // Note: play_file logic might fail if file doesn't exist, but we check if it *tried* to play p1
@@ -995,13 +995,13 @@ mod tests {
 
         // Mock sink being empty is hard because Sink::new_idle() returns a sink that is always empty?
         // If sink is empty, on_tick should trigger replay.
-        
+
         // We need to ensure play_file is called.
         // play_file sets playback_start to Some(Instant::now()).
         app.playback_start = None;
-        
+
         app.on_tick();
-        
+
         // If it replayed, playback_start should be set.
         // However, play_file also tries to open the file. If file doesn't exist, it might fail partway.
         // But current_track is set at start of play_file.
@@ -1009,15 +1009,15 @@ mod tests {
         let temp = tempdir().unwrap();
         let file_path = temp.path().join("test.mp3");
         fs::File::create(&file_path).unwrap();
-        
+
         app.items = vec![file_path.clone()];
         app.current_track = Some(file_path.clone());
-        
+
         // Reset playback_start to check if it gets updated
         app.playback_start = None;
-        
+
         app.on_tick();
-        
+
         assert!(app.playback_start.is_some());
         assert_eq!(app.current_track, Some(file_path));
     }
