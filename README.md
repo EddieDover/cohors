@@ -25,7 +25,7 @@ A TUI music player written in Rust.
 | --- | --- |
 | `q` | Quit Application |
 | `TAB` | Toggle Mode (Files / Radio) |
-| `h` | Toggle Help / About |
+| `?` | Toggle Help / About |
 | `j` / `↓` | Move Selection Down |
 | `k` / `↑` | Move Selection Up |
 | `Enter` | Play Selection / Enter Directory |
@@ -36,6 +36,7 @@ A TUI music player written in Rust.
 | `→` | Next Track |
 | `←` | Previous Track |
 | `l` | Toggle Loop Mode (Off / Track/ Folder) |
+| `h` | Toggle hidden files in File View Mode |
 
 ## Attribution
 This application uses the SomaFM API to provide radio channels.

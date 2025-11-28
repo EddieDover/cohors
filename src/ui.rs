@@ -266,10 +266,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     let help_text = match app.mode {
         AppMode::FileSystem => {
-            " q:Quit | TAB:Switch Mode | h:About | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track | l:Loop "
+            " q:Quit | TAB:Switch Mode | ?:About | h:Hidden | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track | l:Loop "
         }
         AppMode::Radio => {
-            " q:Quit | TAB:Switch Mode | h:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol "
+            " q:Quit | TAB:Switch Mode | ?:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol "
         }
     };
     let help_paragraph =
@@ -297,7 +297,7 @@ fn draw_about_modal(f: &mut Frame) {
         "Repo: https://github.com/EddieDover/cohors",
         "Author: Eddie Dover <ed@eddiedover.dev>",
         "",
-        "Press 'h' or 'Esc' to close",
+        "Press '?' or 'Esc' to close",
     ]
     .join("\n");
 
