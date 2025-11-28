@@ -13,6 +13,7 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
+use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug, Clone)]
@@ -33,6 +34,17 @@ pub struct Args {
     /// Path to a file or directory to play
     #[arg(num_args(0..))]
     path: Vec<String>,
+}
+
+fn redirect_stderr() -> Result<()> {
+    let mut log_path = std::env::temp_dir();
+    log_path.push("cohors_stderr.log");
+    let file = std::fs::File::create(&log_path)?;
+    let fd = file.as_raw_fd();
+    unsafe {
+        libc::dup2(fd, 2);
+    }
+    Ok(())
 }
 
 fn apply_args(app: &mut App, args: Args) {
@@ -105,6 +117,11 @@ fn main() -> Result<()> {
     }
     // Wait a bit to see the message before TUI starts
     std::thread::sleep(std::time::Duration::from_secs(2));
+
+    // Redirect stderr to avoid TUI corruption
+    if let Err(e) = redirect_stderr() {
+        eprintln!("Failed to redirect stderr: {}", e);
+    }
 
     // Setup terminal
     enable_raw_mode()?;

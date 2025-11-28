@@ -10,7 +10,6 @@
         "description": "desc",
         "homepage": "website",
         "tags": "genre",
-        "coverImage": "logo_url",
         "lastPlaying": "current_song"
       }
     }

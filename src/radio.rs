@@ -19,7 +19,6 @@ pub struct RadioStation {
     pub description: Option<String>,
     pub homepage: Option<String>,
     pub tags: Option<String>,
-    pub image: Option<String>,
     pub last_playing: Option<String>,
 }
 
@@ -43,8 +42,6 @@ pub struct StationMapping {
     pub description: Option<String>,
     pub homepage: Option<String>,
     pub tags: Option<String>,
-    #[serde(rename = "coverImage")]
-    pub cover_image: Option<String>,
     #[serde(rename = "lastPlaying")]
     pub last_playing: Option<String>,
 }
@@ -222,11 +219,6 @@ fn map_station(item: &Value, mapping: &StationMapping) -> Option<RadioStation> {
             .as_ref()
             .and_then(|f| get_string_field(item, f))
             .map(|s| s.trim().to_string()),
-        image: mapping
-            .cover_image
-            .as_ref()
-            .and_then(|f| get_string_field(item, f))
-            .map(|s| s.trim().to_string()),
         last_playing: mapping
             .last_playing
             .as_ref()
@@ -312,7 +304,6 @@ mod tests {
             description: None,
             homepage: None,
             tags: None,
-            cover_image: None,
             last_playing: None,
         };
 
@@ -341,7 +332,6 @@ mod tests {
             description: Some("d".to_string()),
             homepage: Some("h".to_string()),
             tags: Some("t".to_string()),
-            cover_image: Some("i".to_string()),
             last_playing: Some("l".to_string()),
         };
 
@@ -351,7 +341,6 @@ mod tests {
             "d": "Desc",
             "h": "Home",
             "t": "Tags",
-            "i": "Image",
             "l": "Last"
         });
 
@@ -361,7 +350,6 @@ mod tests {
         assert_eq!(station.description.as_deref(), Some("Desc"));
         assert_eq!(station.homepage.as_deref(), Some("Home"));
         assert_eq!(station.tags.as_deref(), Some("Tags"));
-        assert_eq!(station.image.as_deref(), Some("Image"));
         assert_eq!(station.last_playing.as_deref(), Some("Last"));
     }
 
@@ -388,7 +376,6 @@ mod tests {
                 description: None,
                 homepage: None,
                 tags: None,
-                cover_image: None,
                 last_playing: None,
             },
         };
@@ -476,8 +463,13 @@ mod tests {
         }"#;
         fs::write(&file_path, content).unwrap();
 
-        // Pass current_dir explicitly
-        let configs = load_config(None, None, Some(dir.path().to_path_buf())).unwrap();
+        // Pass current_dir explicitly, and mock home_dir to avoid picking up real user config
+        let configs = load_config(
+            None,
+            Some(dir.path().to_path_buf()),
+            Some(dir.path().to_path_buf()),
+        )
+        .unwrap();
         assert_eq!(configs.sources.len(), 1);
         assert_eq!(configs.sources[0].title, "Test Group");
     }
@@ -553,7 +545,6 @@ mod tests {
                 description: None,
                 homepage: None,
                 tags: None,
-                cover_image: None,
                 last_playing: None,
             },
         };
@@ -582,7 +573,6 @@ mod tests {
                 description: None,
                 homepage: None,
                 tags: None,
-                cover_image: None,
                 last_playing: None,
             },
         };

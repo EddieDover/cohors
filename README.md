@@ -65,7 +65,6 @@ The configuration file is a JSON object containing a list of `sources`. Each sou
         "description": "desc",
         "homepage": "website",
         "tags": "genre",
-        "coverImage": "logo_url",
         "lastPlaying": "current_song"
       }
     }
