@@ -1,7 +1,10 @@
-use std::{sync::{Arc, Mutex}, time::Duration};
 use rodio::Source;
-use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
 use spectrum_analyzer::scaling::divide_by_N;
+use spectrum_analyzer::{FrequencyLimit, samples_fft_to_spectrum};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 // Audio Analyzer Wrapper
 pub struct AudioAnalyzer<I>
@@ -24,7 +27,7 @@ where
         let sample = self.input.next();
         if let Some(s) = sample {
             self.buffer.push(s);
-            
+
             // Analyze every 2048 samples (approx 46ms at 44.1kHz)
             if self.buffer.len() >= 2048 {
                 let spectrum = samples_fft_to_spectrum(
@@ -39,15 +42,24 @@ where
                     let mut bars = [0u64; 8];
                     for (freq, val) in spec.data() {
                         let freq_val = freq.val();
-                        let idx = if freq_val < 100.0 { 0 }
-                        else if freq_val < 250.0 { 1 }
-                        else if freq_val < 500.0 { 2 }
-                        else if freq_val < 1000.0 { 3 }
-                        else if freq_val < 2000.0 { 4 }
-                        else if freq_val < 4000.0 { 5 }
-                        else if freq_val < 8000.0 { 6 }
-                        else { 7 };
-                        
+                        let idx = if freq_val < 100.0 {
+                            0
+                        } else if freq_val < 250.0 {
+                            1
+                        } else if freq_val < 500.0 {
+                            2
+                        } else if freq_val < 1000.0 {
+                            3
+                        } else if freq_val < 2000.0 {
+                            4
+                        } else if freq_val < 4000.0 {
+                            5
+                        } else if freq_val < 8000.0 {
+                            6
+                        } else {
+                            7
+                        };
+
                         // Scale value (logarithmic-ish)
                         let height = (val.val() * 1000.0) as u64;
                         if height > bars[idx] {
@@ -118,10 +130,16 @@ mod tests {
     fn test_audio_analyzer() {
         let source = SineWave::new(440.0);
         let spectrum_data = Arc::new(Mutex::new(vec![
-            ("Sub", 0), ("Bass", 0), ("LowM", 0), ("Mid", 0),
-            ("HighM", 0), ("Pres", 0), ("Bril", 0), ("Air", 0)
+            ("Sub", 0),
+            ("Bass", 0),
+            ("LowM", 0),
+            ("Mid", 0),
+            ("HighM", 0),
+            ("Pres", 0),
+            ("Bril", 0),
+            ("Air", 0),
         ]));
-        
+
         let mut analyzer = AudioAnalyzer {
             input: source,
             buffer: Vec::new(),
@@ -150,10 +168,16 @@ mod tests {
         let source = SineWave::new(440.0);
         let rate = source.sample_rate();
         let spectrum_data = Arc::new(Mutex::new(vec![
-            ("Sub", 0), ("Bass", 0), ("LowM", 0), ("Mid", 0),
-            ("HighM", 0), ("Pres", 0), ("Bril", 0), ("Air", 0)
+            ("Sub", 0),
+            ("Bass", 0),
+            ("LowM", 0),
+            ("Mid", 0),
+            ("HighM", 0),
+            ("Pres", 0),
+            ("Bril", 0),
+            ("Air", 0),
         ]));
-        
+
         let analyzer = AudioAnalyzer {
             input: source,
             buffer: Vec::new(),
@@ -172,7 +196,7 @@ mod tests {
         let source = SineWave::new(440.0);
         // Initialize with empty vector to trigger the else block
         let spectrum_data = Arc::new(Mutex::new(Vec::new()));
-        
+
         let mut analyzer = AudioAnalyzer {
             input: source,
             buffer: Vec::new(),

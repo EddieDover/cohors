@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use anyhow::Result;
+use serde::Deserialize;
 
 // Attribution: Data provided by SomaFM (https://somafm.com).
 // Please support them!
@@ -104,11 +104,13 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_channels() {
         let mut server = mockito::Server::new_async().await;
-        let _m = server.mock("GET", "/channels.json")
+        let _m = server
+            .mock("GET", "/channels.json")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(r#"{ "channels": [] }"#)
-            .create_async().await;
+            .create_async()
+            .await;
 
         let url = format!("{}/channels.json", server.url());
         let channels = fetch_channels_url(&url).await.unwrap();
@@ -118,7 +120,8 @@ mod tests {
     #[test]
     fn test_fetch_pls_stream_url() {
         let mut server = mockito::Server::new();
-        let _m = server.mock("GET", "/stream.pls")
+        let _m = server
+            .mock("GET", "/stream.pls")
             .with_status(200)
             .with_body("File1=http://example.com/stream")
             .create();
@@ -129,4 +132,3 @@ mod tests {
         assert_eq!(stream_url, "http://example.com/stream");
     }
 }
-
