@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/EddieDover/cohors/compare/v0.3.1...v0.3.2) (2025-11-28)
+
+
+### Bug Fixes
+
+* add version display back to guide bar ([#23](https://github.com/EddieDover/cohors/issues/23)) ([7d8a6d3](https://github.com/EddieDover/cohors/commit/7d8a6d313332cc017312b6da2528aa94503eee7d))
+
 ## [0.3.1](https://github.com/EddieDover/cohors/compare/v0.3.0...v0.3.1) (2025-11-28)
 
 
