@@ -285,11 +285,13 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                         if selected_opt == Some(current_idx) {
                             selected_item_info = Some((
                                 format!(
-                                    "Name: {}\nTags: {}\nLast Playing: {}\nHomepage: {}",
+                                    "Name: {}\nDescription:{}\nTags: {}\nLast Playing: {}\nHomepage: {}\nStation URL: {}",
                                     station.name,
+                                    station.description.as_deref().unwrap_or(""),
                                     station.tags.as_deref().unwrap_or(""),
                                     station.last_playing.as_deref().unwrap_or(""),
                                     station.homepage.as_deref().unwrap_or(""),
+                                    station.url
                                 ),
                                 station.description.as_deref().unwrap_or("").to_string(),
                             ));

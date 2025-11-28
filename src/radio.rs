@@ -244,19 +244,28 @@ fn get_string_field(item: &Value, path: &str) -> Option<String> {
     }
 }
 
-pub fn fetch_pls_stream_url(client: &reqwest::blocking::Client, pls_url: &str) -> Result<String> {
-    let response = client.get(pls_url).send()?;
+pub fn fetch_playlist_stream_url(client: &reqwest::blocking::Client, url: &str) -> Result<String> {
+    let response = client.get(url).send()?;
 
     // Check content type
     if let Some(content_type) = response.headers().get(reqwest::header::CONTENT_TYPE) {
         let ct = content_type.to_str().unwrap_or("").to_lowercase();
-        if ct.contains("audio") || ct.contains("mpeg") || ct.contains("ogg") {
-            anyhow::bail!("URL is an audio stream, not a PLS file");
+        // Allow audio/x-scpls (PLS files) and mpegurl (M3U) but reject other audio streams
+        let is_playlist = ct.contains("scpls") || ct.contains("mpegurl") || ct.contains("m3u");
+        if (ct.contains("audio") || ct.contains("mpeg") || ct.contains("ogg")) && !is_playlist {
+            anyhow::bail!("URL is an audio stream, not a playlist file");
         }
     }
 
     let content = response.text()?;
-    parse_pls(&content)
+
+    // Try parsing as PLS
+    if let Ok(url) = parse_pls(&content) {
+        return Ok(url);
+    }
+
+    // Try parsing as M3U
+    parse_m3u(&content)
 }
 
 pub fn parse_pls(content: &str) -> Result<String> {
@@ -266,6 +275,16 @@ pub fn parse_pls(content: &str) -> Result<String> {
         }
     }
     anyhow::bail!("No stream URL found in PLS")
+}
+
+pub fn parse_m3u(content: &str) -> Result<String> {
+    for line in content.lines() {
+        let line = line.trim();
+        if !line.is_empty() && !line.starts_with('#') {
+            return Ok(line.to_string());
+        }
+    }
+    anyhow::bail!("No stream URL found in M3U")
 }
 
 #[cfg(test)]
@@ -407,7 +426,14 @@ mod tests {
     }
 
     #[test]
-    fn test_fetch_pls_stream_url_check() {
+    fn test_parse_m3u() {
+        let m3u_content = "#EXTM3U\n#EXTINF:-1,Example Radio\nhttp://example.com/stream\n#EXTINF:-1,Another Stream\nhttp://example.com/stream2";
+        let url = parse_m3u(m3u_content).unwrap();
+        assert_eq!(url, "http://example.com/stream");
+    }
+
+    #[test]
+    fn test_fetch_playlist_stream_url_check() {
         let mut server = mockito::Server::new();
 
         // Mock audio stream response
@@ -426,22 +452,36 @@ mod tests {
             .with_body("[playlist]\nFile1=http://stream.com")
             .create();
 
+        // Mock valid M3U response
+        let _m_m3u = server
+            .mock("GET", "/playlist.m3u")
+            .with_status(200)
+            .with_header("content-type", "audio/x-mpegurl")
+            .with_body("#EXTM3U\nhttp://stream.com/m3u")
+            .create();
+
         let client = reqwest::blocking::Client::new();
 
         // Test audio stream rejection
         let url = format!("{}/stream", server.url());
-        let result = fetch_pls_stream_url(&client, &url);
+        let result = fetch_playlist_stream_url(&client, &url);
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
-            "URL is an audio stream, not a PLS file"
+            "URL is an audio stream, not a playlist file"
         );
 
         // Test valid PLS
         let url = format!("{}/playlist.pls", server.url());
-        let result = fetch_pls_stream_url(&client, &url);
+        let result = fetch_playlist_stream_url(&client, &url);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "http://stream.com");
+
+        // Test valid M3U
+        let url = format!("{}/playlist.m3u", server.url());
+        let result = fetch_playlist_stream_url(&client, &url);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "http://stream.com/m3u");
     }
 
     #[test]

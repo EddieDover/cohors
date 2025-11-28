@@ -349,17 +349,18 @@ impl App {
 
             // Spawn a thread to fetch the stream without blocking the UI or panicking tokio
             std::thread::spawn(move || {
-                // Try to parse as PLS first, if it fails, assume it's a direct stream URL
-                let stream_url = match crate::radio::fetch_pls_stream_url(&client, &station_url) {
-                    Ok(url) => url,
-                    Err(_) => station_url, // Fallback to original URL
-                };
+                // Try to parse as playlist (PLS/M3U) first, if it fails, assume it's a direct stream URL
+                let stream_url =
+                    match crate::radio::fetch_playlist_stream_url(&client, &station_url) {
+                        Ok(url) => url,
+                        Err(_) => station_url, // Fallback to original URL
+                    };
 
                 match client.get(&stream_url).send() {
                     Ok(response) => {
                         if response.status().is_success() {
                             let reader = io::BufReader::new(response);
-                            let source = Decoder::new(HttpStream { inner: reader });
+                            let source = Decoder::new(HttpStream::new(reader));
                             match source {
                                 Ok(decoder) => {
                                     let source = decoder.convert_samples::<f32>();
@@ -568,20 +569,62 @@ impl App {
 
 struct HttpStream<R> {
     inner: R,
+    buffer: Vec<u8>,
+    pos: u64,
+}
+
+impl<R: io::Read> HttpStream<R> {
+    fn new(inner: R) -> Self {
+        Self {
+            inner,
+            buffer: Vec::new(),
+            pos: 0,
+        }
+    }
 }
 
 impl<R: io::Read> io::Read for HttpStream<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.read(buf)
+        if self.pos < self.buffer.len() as u64 {
+            let start = self.pos as usize;
+            let available = self.buffer.len() - start;
+            let to_read = std::cmp::min(buf.len(), available);
+            buf[0..to_read].copy_from_slice(&self.buffer[start..start + to_read]);
+            self.pos += to_read as u64;
+            return Ok(to_read);
+        }
+
+        let n = self.inner.read(buf)?;
+        if n > 0 {
+            if self.buffer.len() < 128 * 1024 {
+                let space = 128 * 1024 - self.buffer.len();
+                let to_buffer = std::cmp::min(n, space);
+                self.buffer.extend_from_slice(&buf[0..to_buffer]);
+            }
+            self.pos += n as u64;
+        }
+        Ok(n)
     }
 }
 
-impl<R> io::Seek for HttpStream<R> {
-    fn seek(&mut self, _pos: io::SeekFrom) -> io::Result<u64> {
-        // Fake seek. Rodio/Symphonia might call this to check position or skip.
-        // For a live stream, we can't really seek.
-        // We'll return 0 and hope for the best.
-        Ok(0)
+impl<R: io::Read> io::Seek for HttpStream<R> {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        let new_pos = match pos {
+            io::SeekFrom::Start(p) => p,
+            io::SeekFrom::Current(d) => (self.pos as i64 + d) as u64,
+            io::SeekFrom::End(_) => {
+                return Err(io::Error::other("Cannot seek from end"));
+            }
+        };
+
+        if new_pos <= self.buffer.len() as u64 {
+            self.pos = new_pos;
+            Ok(new_pos)
+        } else if new_pos == self.pos {
+            Ok(new_pos)
+        } else {
+            Err(io::Error::other("Cannot seek in unbuffered region"))
+        }
     }
 }
 
@@ -1165,16 +1208,22 @@ mod tests {
         use std::io::{Read, Seek, SeekFrom};
         let data = b"Hello World";
         let cursor = std::io::Cursor::new(data);
-        let mut stream = HttpStream { inner: cursor };
+        let mut stream = HttpStream::new(cursor);
 
         let mut buf = [0u8; 5];
         let n = stream.read(&mut buf).unwrap();
         assert_eq!(n, 5);
         assert_eq!(&buf, b"Hello");
 
-        // Seek should return 0 (fake seek)
-        let pos = stream.seek(SeekFrom::Start(10)).unwrap();
+        // Seek back to start
+        let pos = stream.seek(SeekFrom::Start(0)).unwrap();
         assert_eq!(pos, 0);
+
+        // Read again
+        let mut buf2 = [0u8; 5];
+        let n = stream.read(&mut buf2).unwrap();
+        assert_eq!(n, 5);
+        assert_eq!(&buf2, b"Hello");
     }
 
     #[test]
