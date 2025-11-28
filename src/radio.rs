@@ -476,8 +476,13 @@ mod tests {
         }"#;
         fs::write(&file_path, content).unwrap();
 
-        // Pass current_dir explicitly
-        let configs = load_config(None, None, Some(dir.path().to_path_buf())).unwrap();
+        // Pass current_dir explicitly, and mock home_dir to avoid picking up real user config
+        let configs = load_config(
+            None,
+            Some(dir.path().to_path_buf()),
+            Some(dir.path().to_path_buf()),
+        )
+        .unwrap();
         assert_eq!(configs.sources.len(), 1);
         assert_eq!(configs.sources[0].title, "Test Group");
     }

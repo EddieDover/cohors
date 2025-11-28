@@ -433,6 +433,7 @@ dependencies = [
  "crossterm",
  "hound",
  "image",
+ "libc",
  "mockito",
  "ratatui",
  "ratatui-image",

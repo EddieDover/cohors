@@ -387,6 +387,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 let image_area = image_block.inner(info_chunks[1]);
                 f.render_widget(image_block, info_chunks[1]);
 
+                f.render_widget(Clear, image_area);
+
                 let image = ratatui_image::StatefulImage::default();
                 f.render_stateful_widget(image, image_area, &mut protocol);
             } else {
@@ -731,5 +733,54 @@ mod tests {
         terminal.draw(|f| draw(f, &mut app)).unwrap();
 
         assert!(app.image_loading.contains(&station_url));
+    }
+
+    #[test]
+    fn test_ui_draw_visualizer_empty_data() {
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        app.current_track = Some(PathBuf::from("test.mp3"));
+        app.is_paused = false;
+        // Force empty spectrum data
+        *app.spectrum_data.lock().unwrap() = Vec::new();
+        
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_ui_draw_radio_scroll_up() {
+        let backend = TestBackend::new(100, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        app.mode = AppMode::Radio;
+        
+        // Add enough items
+        let mut stations = Vec::new();
+        for i in 0..20 {
+            stations.push(crate::radio::RadioStation {
+                name: format!("Station {}", i),
+                url: "u".to_string(),
+                description: None,
+                homepage: None,
+                tags: None,
+                image: None,
+                last_playing: None,
+            });
+        }
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Group".to_string(),
+            stations,
+            is_expanded: true,
+        });
+        
+        // Set offset to 10, selected to 5
+        app.radio_state = app.radio_state.clone().with_offset(10);
+        app.radio_state.select(Some(5));
+        
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        
+        // Offset should become 5
+        assert_eq!(app.radio_state.offset(), 5);
     }
 }
