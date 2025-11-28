@@ -1,11 +1,13 @@
 use crate::audio::AudioAnalyzer;
-use crate::radio::Channel;
+use crate::radio::{RadioGroup, RadioStation};
 use crate::ui;
 use crossterm::event::{self, Event, KeyCode};
+use image::DynamicImage;
 use ratatui::widgets::ListState;
 use ratatui::{Terminal, backend::Backend};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::{
+    collections::{HashMap, HashSet},
     fs, io,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -29,7 +31,7 @@ pub struct App {
     pub items: Vec<PathBuf>,
     pub state: ListState,
     // Radio
-    pub radio_stations: Vec<Channel>,
+    pub radio_groups: Vec<RadioGroup>,
     pub radio_state: ListState,
     // Audio
     pub _stream: Option<OutputStream>,
@@ -54,6 +56,12 @@ pub struct App {
     pub show_hidden: bool,
     // Looping Mode
     pub loop_mode: LoopMode,
+    // Image Cache
+    pub image_cache: HashMap<String, DynamicImage>,
+    pub image_loading: HashSet<String>,
+    pub image_receiver: Option<std::sync::mpsc::Receiver<(String, DynamicImage)>>,
+    pub image_sender: std::sync::mpsc::Sender<(String, DynamicImage)>,
+    pub picker: Option<ratatui_image::picker::Picker>,
 }
 
 impl App {
@@ -71,13 +79,25 @@ impl App {
             s.set_volume(volume);
         }
 
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut picker = None;
+        // Try to create a picker. This might fail if not in a terminal, but we'll try.
+        // We use from_query_stdio which is generally safe.
+        if let Ok(p) = ratatui_image::picker::Picker::from_query_stdio() {
+            picker = Some(p);
+        } else {
+            // Fallback or just don't show images
+            // Try a default one if termios fails (e.g. in tests or weird envs)
+            // picker = Some(ratatui_image::picker::Picker::new(ratatui_image::picker::Protocol::Halfblocks));
+        }
+
         let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let mut app = App {
             mode: AppMode::FileSystem,
             current_dir,
             items: Vec::new(),
             state: ListState::default(),
-            radio_stations: Vec::new(),
+            radio_groups: Vec::new(),
             radio_state: ListState::default(),
             _stream: stream,
             _stream_handle: stream_handle,
@@ -104,6 +124,11 @@ impl App {
             show_about: false,
             show_hidden: false,
             loop_mode: LoopMode::Off,
+            image_cache: HashMap::new(),
+            image_loading: HashSet::new(),
+            image_receiver: Some(rx),
+            image_sender: tx,
+            picker,
         };
         app.load_directory();
         app
@@ -112,12 +137,13 @@ impl App {
     #[cfg(test)]
     pub fn new_test() -> App {
         let (sink, _queue) = Sink::new_idle();
+        let (tx, rx) = std::sync::mpsc::channel();
         App {
             mode: AppMode::FileSystem,
             current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             items: Vec::new(),
             state: ListState::default(),
-            radio_stations: Vec::new(),
+            radio_groups: Vec::new(),
             radio_state: ListState::default(),
             _stream: None,
             _stream_handle: None,
@@ -144,6 +170,11 @@ impl App {
             show_about: false,
             show_hidden: false,
             loop_mode: LoopMode::Off,
+            image_cache: HashMap::new(),
+            image_loading: HashSet::new(),
+            image_receiver: Some(rx),
+            image_sender: tx,
+            picker: None,
         }
     }
 
@@ -192,6 +223,17 @@ impl App {
         self.state.select(Some(0));
     }
 
+    pub fn get_visible_radio_count(&self) -> usize {
+        let mut count = 0;
+        for group in &self.radio_groups {
+            count += 1; // The group header
+            if group.is_expanded {
+                count += group.stations.len();
+            }
+        }
+        count
+    }
+
     pub fn next(&mut self) {
         match self.mode {
             AppMode::FileSystem => {
@@ -208,9 +250,10 @@ impl App {
                 self.state.select(Some(i));
             }
             AppMode::Radio => {
+                let count = self.get_visible_radio_count();
                 let i = match self.radio_state.selected() {
                     Some(i) => {
-                        if i >= self.radio_stations.len().saturating_sub(1) {
+                        if i >= count.saturating_sub(1) {
                             0
                         } else {
                             i + 1
@@ -239,10 +282,11 @@ impl App {
                 self.state.select(Some(i));
             }
             AppMode::Radio => {
+                let count = self.get_visible_radio_count();
                 let i = match self.radio_state.selected() {
                     Some(i) => {
                         if i == 0 {
-                            self.radio_stations.len().saturating_sub(1)
+                            count.saturating_sub(1)
                         } else {
                             i - 1
                         }
@@ -270,19 +314,50 @@ impl App {
                 }
             }
             AppMode::Radio => {
-                if let Some(channel) = self
-                    .radio_state
-                    .selected()
-                    .and_then(|i| self.radio_stations.get(i))
-                {
-                    self.play_radio(channel.clone());
+                //Determine what action to take
+                enum Action {
+                    ToggleGroup(usize), // group_index
+                    PlayStation(RadioStation),
+                }
+
+                let mut action = None;
+                let selected_idx = self.radio_state.selected().unwrap_or(0);
+                let mut current_idx = 0;
+
+                for (g_idx, group) in self.radio_groups.iter().enumerate() {
+                    if current_idx == selected_idx {
+                        action = Some(Action::ToggleGroup(g_idx));
+                        break;
+                    }
+                    current_idx += 1;
+
+                    if group.is_expanded {
+                        if selected_idx < current_idx + group.stations.len() {
+                            let station_idx = selected_idx - current_idx;
+                            action = Some(Action::PlayStation(group.stations[station_idx].clone()));
+                            break;
+                        }
+                        current_idx += group.stations.len();
+                    }
+                }
+
+                match action {
+                    Some(Action::ToggleGroup(idx)) => {
+                        if let Some(group) = self.radio_groups.get_mut(idx) {
+                            group.is_expanded = !group.is_expanded;
+                        }
+                    }
+                    Some(Action::PlayStation(station)) => {
+                        self.play_radio(station);
+                    }
+                    None => {}
                 }
             }
         }
     }
 
-    pub fn play_radio(&mut self, channel: crate::radio::Channel) {
-        self.current_track = Some(PathBuf::from(&channel.title));
+    pub fn play_radio(&mut self, station: crate::radio::RadioStation) {
+        self.current_track = Some(PathBuf::from(&station.name));
         self.is_paused = false;
         self.playback_start = Some(Instant::now());
         self.playback_elapsed = Duration::from_secs(0);
@@ -296,21 +371,17 @@ impl App {
 
             let spectrum_data = self.spectrum_data.clone();
             let client = self.http_client.clone();
+            let station_url = station.url.clone();
 
             // Spawn a thread to fetch the stream without blocking the UI or panicking tokio
             std::thread::spawn(move || {
-                // Find best playlist (mp3)
-                let pls_url = channel
-                    .playlists
-                    .iter()
-                    .find(|p| p.format == "mp3")
-                    .or_else(|| channel.playlists.first())
-                    .map(|p| p.url.clone());
+                // Try to parse as PLS first, if it fails, assume it's a direct stream URL
+                let stream_url = match crate::radio::fetch_pls_stream_url(&client, &station_url) {
+                    Ok(url) => url,
+                    Err(_) => station_url, // Fallback to original URL
+                };
 
-                if let Some(url) = pls_url
-                    && let Ok(stream_url) = crate::radio::fetch_pls_stream_url(&client, &url)
-                    && let Ok(response) = client.get(&stream_url).send()
-                {
+                if let Ok(response) = client.get(&stream_url).send() {
                     let reader = io::BufReader::new(response);
                     let source = Decoder::new(HttpStream { inner: reader });
                     if let Ok(decoder) = source {
@@ -331,6 +402,25 @@ impl App {
         }
     }
 
+    pub fn trigger_image_load(&mut self, url: String) {
+        if self.image_cache.contains_key(&url) || self.image_loading.contains(&url) {
+            return;
+        }
+
+        self.image_loading.insert(url.clone());
+        let sender = self.image_sender.clone();
+        let client = self.http_client.clone();
+
+        std::thread::spawn(move || {
+            if let Ok(response) = client.get(&url).send()
+                && let Ok(bytes) = response.bytes()
+                && let Ok(img) = image::load_from_memory(&bytes)
+            {
+                let _ = sender.send((url, img));
+            }
+        });
+    }
+
     pub fn on_tick(&mut self) {
         let source = self
             .source_receiver
@@ -343,6 +433,14 @@ impl App {
                 sink.play();
             }
             self.source_receiver = None;
+        }
+
+        // Check for loaded images
+        if let Some(rx) = &self.image_receiver {
+            while let Ok((url, img)) = rx.try_recv() {
+                self.image_cache.insert(url.clone(), img);
+                self.image_loading.remove(&url);
+            }
         }
 
         // Check for auto-advance
@@ -904,18 +1002,17 @@ mod tests {
     #[test]
     fn test_play_radio_sets_receiver() {
         let mut app = App::new_test();
-        let channel = crate::radio::Channel {
-            id: "test".to_string(),
-            title: "Test Radio".to_string(),
-            description: "Test".to_string(),
-            dj: "DJ".to_string(),
-            genre: "Genre".to_string(),
+        let station = crate::radio::RadioStation {
+            name: "Test Radio".to_string(),
+            url: "http://test.com".to_string(),
+            description: Some("Test".to_string()),
+            homepage: None,
+            tags: None,
             image: None,
-            listeners: "0".to_string(),
-            playlists: vec![],
+            last_playing: None,
         };
 
-        app.play_radio(channel);
+        app.play_radio(station);
         assert!(app.source_receiver.is_some());
     }
 
@@ -925,37 +1022,30 @@ mod tests {
         app.mode = AppMode::Radio;
 
         // Add dummy stations
-        app.radio_stations.push(crate::radio::Channel {
-            id: "1".to_string(),
-            title: "1".to_string(),
-            description: "".to_string(),
-            dj: "".to_string(),
-            genre: "".to_string(),
-            image: None,
-            listeners: "".to_string(),
-            playlists: vec![],
-        });
-        app.radio_stations.push(crate::radio::Channel {
-            id: "2".to_string(),
-            title: "2".to_string(),
-            description: "".to_string(),
-            dj: "".to_string(),
-            genre: "".to_string(),
-            image: None,
-            listeners: "".to_string(),
-            playlists: vec![],
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Group 1".to_string(),
+            stations: vec![crate::radio::RadioStation {
+                name: "1".to_string(),
+                url: "1".to_string(),
+                description: None,
+                homepage: None,
+                tags: None,
+                image: None,
+                last_playing: None,
+            }],
+            is_expanded: true,
         });
 
-        app.radio_state.select(Some(0));
+        app.radio_state.select(Some(0)); // Group header
 
         app.next();
-        assert_eq!(app.radio_state.selected(), Some(1));
+        assert_eq!(app.radio_state.selected(), Some(1)); // Station 1
 
         app.next();
-        assert_eq!(app.radio_state.selected(), Some(0)); // Wrap around
+        assert_eq!(app.radio_state.selected(), Some(0)); // Wrap around to Group header
 
         app.previous();
-        assert_eq!(app.radio_state.selected(), Some(1)); // Wrap around
+        assert_eq!(app.radio_state.selected(), Some(1)); // Wrap around to Station 1
 
         app.previous();
         assert_eq!(app.radio_state.selected(), Some(0));
@@ -1096,5 +1186,69 @@ mod tests {
             .iter()
             .any(|p| p.file_name().and_then(|n| n.to_str()).unwrap_or("") == ".hidden.mp3");
         assert!(!has_hidden, "Hidden files should be hidden again");
+    }
+
+    #[test]
+    fn test_on_tick_receives_image() {
+        let mut app = App::new_test();
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.image_receiver = Some(rx);
+
+        let url = "http://test.com/image.png".to_string();
+        let img = image::DynamicImage::new_rgb8(1, 1);
+
+        tx.send((url.clone(), img)).unwrap();
+
+        app.on_tick();
+
+        assert!(app.image_cache.contains_key(&url));
+        assert!(!app.image_loading.contains(&url));
+    }
+
+    #[test]
+    fn test_http_stream() {
+        use std::io::{Read, Seek, SeekFrom};
+        let data = b"Hello World";
+        let cursor = std::io::Cursor::new(data);
+        let mut stream = HttpStream { inner: cursor };
+
+        let mut buf = [0u8; 5];
+        let n = stream.read(&mut buf).unwrap();
+        assert_eq!(n, 5);
+        assert_eq!(&buf, b"Hello");
+
+        // Seek should return 0 (fake seek)
+        let pos = stream.seek(SeekFrom::Start(10)).unwrap();
+        assert_eq!(pos, 0);
+    }
+
+    #[test]
+    fn test_trigger_image_load_cached() {
+        let mut app = App::new_test();
+        let url = "http://test.com/image.png".to_string();
+        app.image_cache
+            .insert(url.clone(), image::DynamicImage::new_rgb8(1, 1));
+
+        // Should return immediately
+        app.trigger_image_load(url.clone());
+        assert!(!app.image_loading.contains(&url));
+    }
+
+    #[test]
+    fn test_play_radio_no_sink() {
+        let mut app = App::new_test();
+        app.sink = None;
+        let station = crate::radio::RadioStation {
+            name: "Test".to_string(),
+            url: "http://test.com".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            image: None,
+            last_playing: None,
+        };
+
+        app.play_radio(station);
+        assert!(app.source_receiver.is_none());
     }
 }

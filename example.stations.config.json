@@ -1,0 +1,18 @@
+{
+  "sources": [
+    {
+      "title": "Example Radio Source",
+      "json_url": "https://api.example.com/stations.json",
+      "container": "stations",
+      "mapping": {
+        "station_name": "name",
+        "station_url": "stream_url",
+        "description": "desc",
+        "homepage": "website",
+        "tags": "genre",
+        "coverImage": "logo_url",
+        "lastPlaying": "current_song"
+      }
+    }
+  ]
+}

@@ -3,7 +3,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{BarChart, Block, Borders, Clear, Gauge, List, ListItem, Paragraph},
+    widgets::{BarChart, Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph},
 };
 use std::time::Duration;
 
@@ -211,17 +211,100 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
                 .split(chunks[0]);
 
-            let items: Vec<ListItem> = app
-                .radio_stations
-                .iter()
-                .map(|channel| ListItem::new(channel.title.clone()))
-                .collect();
+            let list_area = top_chunks[0];
+            let list_height = list_area.height as usize;
+
+            // Calculate visible window
+            let selected_opt = app.radio_state.selected();
+            let selected = selected_opt.unwrap_or(0);
+            let offset = app.radio_state.offset();
+
+            let new_offset = if selected < offset {
+                selected
+            } else if selected >= offset + list_height {
+                selected.saturating_sub(list_height).saturating_add(1)
+            } else {
+                offset
+            };
+
+            if new_offset != offset {
+                app.radio_state = app.radio_state.clone().with_offset(new_offset);
+            }
+
+            let start = new_offset;
+            let end = start + list_height;
+
+            let mut items = Vec::new();
+            let mut current_idx = 0;
+            let mut selected_item_info = None;
+
+            'outer: for group in &app.radio_groups {
+                // Group Header
+                if current_idx >= start && current_idx < end {
+                    let prefix = if group.is_expanded { "v " } else { "> " };
+                    let title = format!("{}{}", prefix, group.title);
+                    let style = Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD);
+                    items.push(ListItem::new(title).style(style));
+                }
+
+                if selected_opt == Some(current_idx) {
+                    selected_item_info = Some((
+                        format!("Group: {} ({} stations)", group.title, group.stations.len()),
+                        String::new(),
+                    ));
+                }
+                current_idx += 1;
+
+                if group.is_expanded {
+                    let station_count = group.stations.len();
+
+                    // Optimization: Skip if entire group is before start
+                    if current_idx + station_count <= start {
+                        current_idx += station_count;
+                        continue;
+                    }
+
+                    for station in &group.stations {
+                        if current_idx >= end {
+                            // If we found the selected item, we can break
+                            if selected_item_info.is_some() {
+                                break 'outer;
+                            }
+                            // If selected is further down (shouldn't happen with correct offset),
+                            // we might miss info, but we prioritize rendering speed.
+                            break 'outer;
+                        }
+
+                        if current_idx >= start {
+                            let name = format!("  {}", station.name);
+                            items.push(ListItem::new(name));
+                        }
+
+                        if selected_opt == Some(current_idx) {
+                            selected_item_info = Some((
+                                format!(
+                                    "Name: {}\nTags: {}\nLast Playing: {}\nHomepage: {}\nImage: {}",
+                                    station.name,
+                                    station.tags.as_deref().unwrap_or(""),
+                                    station.last_playing.as_deref().unwrap_or(""),
+                                    station.homepage.as_deref().unwrap_or(""),
+                                    station.image.as_deref().unwrap_or("")
+                                ),
+                                station.description.as_deref().unwrap_or("").to_string(),
+                            ));
+                        }
+                        current_idx += 1;
+                    }
+                }
+            }
 
             let list = List::new(items)
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .title("SomaFM Channels"),
+                        .title("Radio Stations"),
                 )
                 .highlight_style(
                     Style::default()
@@ -230,31 +313,88 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 )
                 .highlight_symbol(">> ");
 
-            f.render_stateful_widget(list, top_chunks[0], &mut app.radio_state);
+            // Use a temporary state for rendering the windowed list
+            let relative_selected = selected_opt.map(|s| s.saturating_sub(start));
+            let mut render_state = ListState::default()
+                .with_selected(relative_selected)
+                .with_offset(0);
+
+            f.render_stateful_widget(list, top_chunks[0], &mut render_state);
 
             // Right Panel: Info
-            let info_text = if let Some(i) = app.radio_state.selected() {
-                if let Some(channel) = app.radio_stations.get(i) {
-                    format!(
-                        "Title: {}\nDJ: {}\nGenre: {}\nListeners: {}\n\n{}",
-                        channel.title,
-                        channel.dj,
-                        channel.genre,
-                        channel.listeners,
-                        channel.description
-                    )
-                } else {
-                    "No selection".to_string()
-                }
+            f.render_widget(Clear, top_chunks[1]);
+            let (info_text, description) =
+                selected_item_info.unwrap_or(("No selection".to_string(), String::new()));
+            let full_text = if description.is_empty() {
+                info_text
             } else {
-                "No selection".to_string()
+                format!("{}\n\n{}", info_text, description)
             };
 
-            let info_block = Block::default().borders(Borders::ALL).title("Channel Info");
-            let info_paragraph = Paragraph::new(info_text)
-                .block(info_block)
-                .wrap(ratatui::widgets::Wrap { trim: true });
-            f.render_widget(info_paragraph, top_chunks[1]);
+            let info_block = Block::default().borders(Borders::ALL).title("Station Info");
+
+            // Check for image
+            let mut image_widget = None;
+            let mut image_url_to_load = None;
+
+            if let Some(idx) = selected_opt {
+                let mut curr = 0;
+                for group in &app.radio_groups {
+                    if curr == idx {
+                        break;
+                    }
+                    curr += 1;
+                    if group.is_expanded {
+                        if idx < curr + group.stations.len() {
+                            let station = &group.stations[idx - curr];
+                            if let Some(url) = &station.image
+                                && !url.is_empty()
+                            {
+                                image_url_to_load = Some(url.clone());
+                            }
+                            break;
+                        }
+                        curr += group.stations.len();
+                    }
+                }
+            }
+
+            if let Some(url) = image_url_to_load {
+                if !app.image_cache.contains_key(&url) {
+                    app.trigger_image_load(url.clone());
+                }
+
+                if let Some(img) = app.image_cache.get(&url)
+                    && let Some(picker) = &mut app.picker
+                {
+                    image_widget = Some((picker.new_resize_protocol(img.clone()), img));
+                }
+            }
+
+            if let Some((mut protocol, _img)) = image_widget {
+                // Split info panel into text and image
+                let info_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Min(10), Constraint::Percentage(50)].as_ref())
+                    .split(top_chunks[1]);
+
+                let info_paragraph = Paragraph::new(full_text)
+                    .block(info_block)
+                    .wrap(ratatui::widgets::Wrap { trim: true });
+                f.render_widget(info_paragraph, info_chunks[0]);
+
+                let image_block = Block::default().borders(Borders::ALL).title("Cover");
+                let image_area = image_block.inner(info_chunks[1]);
+                f.render_widget(image_block, info_chunks[1]);
+
+                let image = ratatui_image::StatefulImage::default();
+                f.render_stateful_widget(image, image_area, &mut protocol);
+            } else {
+                let info_paragraph = Paragraph::new(full_text)
+                    .block(info_block)
+                    .wrap(ratatui::widgets::Wrap { trim: true });
+                f.render_widget(info_paragraph, top_chunks[1]);
+            }
         }
     }
 
@@ -423,6 +563,173 @@ mod tests {
         let mut app = App::new_test();
         app.mode = AppMode::Radio;
 
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Test Group".to_string(),
+            stations: vec![crate::radio::RadioStation {
+                name: "Test Station".to_string(),
+                url: "http://test.com".to_string(),
+                description: None,
+                homepage: None,
+                tags: None,
+                image: None,
+                last_playing: None,
+            }],
+            is_expanded: true,
+        });
+        app.radio_state.select(Some(0));
+
         terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_ui_draw_radio_large_list() {
+        let backend = TestBackend::new(100, 20); // Small height to force scrolling
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        app.mode = AppMode::Radio;
+
+        let mut stations = Vec::new();
+        for i in 0..50 {
+            stations.push(crate::radio::RadioStation {
+                name: format!("Station {}", i),
+                url: "http://test.com".to_string(),
+                description: Some("Desc".to_string()),
+                homepage: None,
+                tags: None,
+                image: None,
+                last_playing: None,
+            });
+        }
+
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Large Group".to_string(),
+            stations,
+            is_expanded: true,
+        });
+
+        // Select an item that requires scrolling (e.g., index 30)
+        // Index 0 is group header, stations start at 1.
+        // So station 30 is at index 31.
+        app.radio_state.select(Some(31));
+
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+        // Verify offset was updated
+        assert!(app.radio_state.offset() > 0);
+    }
+
+    #[test]
+    fn test_ui_draw_radio_with_image() {
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        app.mode = AppMode::Radio;
+
+        // Setup a station with an image URL
+        let station_url = "http://example.com/image.png".to_string();
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Test Group".to_string(),
+            stations: vec![crate::radio::RadioStation {
+                name: "Test Station".to_string(),
+                url: "http://test.com".to_string(),
+                description: None,
+                homepage: None,
+                tags: None,
+                image: Some(station_url.clone()),
+                last_playing: None,
+            }],
+            is_expanded: true,
+        });
+        app.radio_state.select(Some(1)); // Select the station
+
+        // Manually populate the image cache
+        let img = image::DynamicImage::new_rgb8(10, 10);
+        app.image_cache.insert(station_url.clone(), img);
+
+        // Manually set a picker (using Halfblocks for test environment safety)
+        app.picker = Some(ratatui_image::picker::Picker::from_fontsize((8, 16)));
+
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_ui_draw_radio_scrolling_optimization() {
+        let backend = TestBackend::new(100, 10); // Very short height
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        app.mode = AppMode::Radio;
+
+        // Group 1: 5 stations (Index 0-5)
+        let mut stations1 = Vec::new();
+        for i in 0..5 {
+            stations1.push(crate::radio::RadioStation {
+                name: format!("Station 1-{}", i),
+                url: "u".to_string(),
+                description: None,
+                homepage: None,
+                tags: None,
+                image: None,
+                last_playing: None,
+            });
+        }
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Group 1".to_string(),
+            stations: stations1,
+            is_expanded: true,
+        });
+
+        // Group 2: 5 stations (Index 6-11)
+        let mut stations2 = Vec::new();
+        for i in 0..5 {
+            stations2.push(crate::radio::RadioStation {
+                name: format!("Station 2-{}", i),
+                url: "u".to_string(),
+                description: None,
+                homepage: None,
+                tags: None,
+                image: None,
+                last_playing: None,
+            });
+        }
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Group 2".to_string(),
+            stations: stations2,
+            is_expanded: true,
+        });
+
+        // Select something in Group 2 to force scrolling Group 1 out of view
+        // List height is ~10 (minus borders/titles/etc).
+        // If we select index 10 (Station 2-4), offset should be around 10-height+1.
+        app.radio_state.select(Some(10));
+
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_ui_draw_radio_image_loading() {
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        app.mode = AppMode::Radio;
+
+        let station_url = "http://example.com/image.png".to_string();
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Test Group".to_string(),
+            stations: vec![crate::radio::RadioStation {
+                name: "Test Station".to_string(),
+                url: "http://test.com".to_string(),
+                description: None,
+                homepage: None,
+                tags: None,
+                image: Some(station_url.clone()),
+                last_playing: None,
+            }],
+            is_expanded: true,
+        });
+        app.radio_state.select(Some(1));
+
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+        assert!(app.image_loading.contains(&station_url));
     }
 }
