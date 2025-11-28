@@ -13,6 +13,7 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
+#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 
@@ -36,6 +37,7 @@ pub struct Args {
     path: Vec<String>,
 }
 
+#[cfg(unix)]
 fn redirect_stderr() -> Result<()> {
     let mut log_path = std::env::temp_dir();
     log_path.push("cohors_stderr.log");
@@ -44,6 +46,11 @@ fn redirect_stderr() -> Result<()> {
     unsafe {
         libc::dup2(fd, 2);
     }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn redirect_stderr() -> Result<()> {
     Ok(())
 }
 
