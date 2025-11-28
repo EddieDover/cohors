@@ -1,15 +1,26 @@
-use std::{fs, io, path::PathBuf, time::{Duration, Instant}, sync::{Arc, Mutex}};
-use ratatui::widgets::ListState;
-use rodio::{Decoder, OutputStream, Sink, OutputStreamHandle, Source};
 use crate::audio::AudioAnalyzer;
 use crate::radio::Channel;
-use crossterm::event::{self, Event, KeyCode};
-use ratatui::{backend::Backend, Terminal};
 use crate::ui;
+use crossterm::event::{self, Event, KeyCode};
+use ratatui::widgets::ListState;
+use ratatui::{Terminal, backend::Backend};
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
+use std::{
+    fs, io,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 pub enum AppMode {
     FileSystem,
     Radio,
+}
+
+pub enum LoopMode {
+    Off,
+    Track,
+    All,
 }
 
 pub struct App {
@@ -40,6 +51,8 @@ pub struct App {
     pub http_client: reqwest::blocking::Client,
     // UI State
     pub show_about: bool,
+    // Looping Mode
+    pub loop_mode: LoopMode,
 }
 
 impl App {
@@ -76,12 +89,19 @@ impl App {
             playback_start: None,
             playback_elapsed: Duration::from_secs(0),
             spectrum_data: Arc::new(Mutex::new(vec![
-                ("Sub", 0), ("Bass", 0), ("LowM", 0), ("Mid", 0),
-                ("HighM", 0), ("Pres", 0), ("Bril", 0), ("Air", 0)
+                ("Sub", 0),
+                ("Bass", 0),
+                ("LowM", 0),
+                ("Mid", 0),
+                ("HighM", 0),
+                ("Pres", 0),
+                ("Bril", 0),
+                ("Air", 0),
             ])),
             source_receiver: None,
             http_client: reqwest::blocking::Client::new(),
             show_about: false,
+            loop_mode: LoopMode::Off,
         };
         app.load_directory();
         app
@@ -108,12 +128,19 @@ impl App {
             playback_start: None,
             playback_elapsed: Duration::from_secs(0),
             spectrum_data: Arc::new(Mutex::new(vec![
-                ("Sub", 0), ("Bass", 0), ("LowM", 0), ("Mid", 0),
-                ("HighM", 0), ("Pres", 0), ("Bril", 0), ("Air", 0)
+                ("Sub", 0),
+                ("Bass", 0),
+                ("LowM", 0),
+                ("Mid", 0),
+                ("HighM", 0),
+                ("Pres", 0),
+                ("Bril", 0),
+                ("Air", 0),
             ])),
             source_receiver: None,
             http_client: reqwest::blocking::Client::new(),
             show_about: false,
+            loop_mode: LoopMode::Off,
         }
     }
 
@@ -234,7 +261,11 @@ impl App {
                 }
             }
             AppMode::Radio => {
-                if let Some(channel) = self.radio_state.selected().and_then(|i| self.radio_stations.get(i)) {
+                if let Some(channel) = self
+                    .radio_state
+                    .selected()
+                    .and_then(|i| self.radio_stations.get(i))
+                {
                     self.play_radio(channel.clone());
                 }
             }
@@ -250,38 +281,40 @@ impl App {
 
         if let Some(sink) = &self.sink {
             sink.stop(); // Stop current track immediately
-            
+
             let (tx, rx) = std::sync::mpsc::channel();
             self.source_receiver = Some(rx);
-            
+
             let spectrum_data = self.spectrum_data.clone();
             let client = self.http_client.clone();
-            
+
             // Spawn a thread to fetch the stream without blocking the UI or panicking tokio
             std::thread::spawn(move || {
                 // Find best playlist (mp3)
-                let pls_url = channel.playlists.iter()
+                let pls_url = channel
+                    .playlists
+                    .iter()
                     .find(|p| p.format == "mp3")
                     .or_else(|| channel.playlists.first())
                     .map(|p| p.url.clone());
 
-                if let Some(url) = pls_url 
-                    && let Ok(stream_url) = crate::radio::fetch_pls_stream_url(&client, &url) 
-                    && let Ok(response) = client.get(&stream_url).send() 
+                if let Some(url) = pls_url
+                    && let Ok(stream_url) = crate::radio::fetch_pls_stream_url(&client, &url)
+                    && let Ok(response) = client.get(&stream_url).send()
                 {
                     let reader = io::BufReader::new(response);
                     let source = Decoder::new(HttpStream { inner: reader });
                     if let Ok(decoder) = source {
                         let source = decoder.convert_samples::<f32>();
                         let sample_rate = source.sample_rate();
-                        
+
                         let analyzer = AudioAnalyzer {
                             input: source,
                             buffer: Vec::with_capacity(2048),
                             spectrum_data,
                             sample_rate,
                         };
-                        
+
                         let _ = tx.send(Box::new(analyzer));
                     }
                 }
@@ -290,7 +323,10 @@ impl App {
     }
 
     pub fn on_tick(&mut self) {
-        let source = self.source_receiver.as_ref().and_then(|rx| rx.try_recv().ok());
+        let source = self
+            .source_receiver
+            .as_ref()
+            .and_then(|rx| rx.try_recv().ok());
 
         if let Some(source) = source {
             if let Some(sink) = &self.sink {
@@ -298,6 +334,23 @@ impl App {
                 sink.play();
             }
             self.source_receiver = None;
+        }
+
+        // Check for auto-advance
+        if let Some(sink) = &self.sink
+            && sink.empty()
+            && !self.is_paused
+            && self.current_track.is_some()
+        {
+            match self.loop_mode {
+                LoopMode::All => self.next_track(),
+                LoopMode::Track => {
+                    if let Some(path) = self.current_track.clone() {
+                        self.play_file(path);
+                    }
+                }
+                LoopMode::Off => {}
+            }
         }
     }
 
@@ -313,11 +366,11 @@ impl App {
                 let reader = io::BufReader::new(file);
                 if let Ok(decoder) = Decoder::new(reader) {
                     self.track_duration = decoder.total_duration();
-                    
+
                     // Convert to f32 for analysis
                     let source = decoder.convert_samples::<f32>();
                     let sample_rate = source.sample_rate();
-                    
+
                     // Wrap in analyzer
                     let analyzer = AudioAnalyzer {
                         input: source,
@@ -360,12 +413,26 @@ impl App {
         }
     }
 
+    pub fn toggle_loop(&mut self) {
+        self.loop_mode = match self.loop_mode {
+            LoopMode::Off => LoopMode::Track,
+            LoopMode::Track => LoopMode::All,
+            LoopMode::All => LoopMode::Off,
+        };
+    }
+
     pub fn next_track(&mut self) {
         // Only for FileSystem mode
-        if matches!(self.mode, AppMode::Radio) { return; }
+        if matches!(self.mode, AppMode::Radio) {
+            return;
+        }
 
         // Find current track index in items
-        if let Some(idx) = self.current_track.as_ref().and_then(|cp| self.items.iter().position(|p| p == cp)) {
+        if let Some(idx) = self
+            .current_track
+            .as_ref()
+            .and_then(|cp| self.items.iter().position(|p| p == cp))
+        {
             // Find next playable file
             for i in (idx + 1)..self.items.len() {
                 let path = &self.items[i];
@@ -375,14 +442,32 @@ impl App {
                     return;
                 }
             }
+
+            // If LoopMode::All, wrap around
+            if matches!(self.loop_mode, LoopMode::All) {
+                for i in 0..=idx {
+                    let path = &self.items[i];
+                    if !path.is_dir() && path.file_name().and_then(|n| n.to_str()) != Some("..") {
+                        self.play_file(path.clone());
+                        self.state.select(Some(i)); // Move selection to playing file
+                        return;
+                    }
+                }
+            }
         }
     }
 
     pub fn previous_track(&mut self) {
         // Only for FileSystem mode
-        if matches!(self.mode, AppMode::Radio) { return; }
+        if matches!(self.mode, AppMode::Radio) {
+            return;
+        }
 
-        if let Some(idx) = self.current_track.as_ref().and_then(|cp| self.items.iter().position(|p| p == cp)) {
+        if let Some(idx) = self
+            .current_track
+            .as_ref()
+            .and_then(|cp| self.items.iter().position(|p| p == cp))
+        {
             // Find previous playable file
             for i in (0..idx).rev() {
                 let path = &self.items[i];
@@ -421,7 +506,6 @@ impl<R> io::Seek for HttpStream<R> {
         Ok(0)
     }
 }
-
 
 pub trait EventSource {
     fn poll(&mut self, timeout: Duration) -> io::Result<bool>;
@@ -469,6 +553,7 @@ pub fn run_app<B: Backend, E: EventSource>(
                         KeyCode::Char('j') | KeyCode::Down => app.next(),
                         KeyCode::Char('k') | KeyCode::Up => app.previous(),
                         KeyCode::Char('+') | KeyCode::Char('=') => app.change_volume(0.05),
+                        KeyCode::Char('l') => app.toggle_loop(),
                         KeyCode::Char('-') => app.change_volume(-0.05),
                         KeyCode::Left => app.previous_track(),
                         KeyCode::Right => app.next_track(),
@@ -488,7 +573,6 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
-
 
     #[test]
     fn test_app_initialization() {
@@ -522,7 +606,7 @@ mod tests {
         app.volume = 0.5;
         app.change_volume(0.1);
         assert!((app.volume - 0.6).abs() < 0.001);
-        
+
         app.change_volume(-0.2);
         assert!((app.volume - 0.4).abs() < 0.001);
 
@@ -539,7 +623,7 @@ mod tests {
         let file1 = temp.path().join("test.mp3");
         let file2 = temp.path().join("test.txt"); // Should be ignored
         let dir1 = temp.path().join("subdir");
-        
+
         fs::File::create(&file1).unwrap();
         fs::File::create(&file2).unwrap();
         fs::create_dir(&dir1).unwrap();
@@ -549,11 +633,17 @@ mod tests {
         app.load_directory();
 
         // Items should contain: .. (if not root), subdir, test.mp3
-        
-        let names: Vec<String> = app.items.iter()
-            .map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "..".to_string()))
+
+        let names: Vec<String> = app
+            .items
+            .iter()
+            .map(|p| {
+                p.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "..".to_string())
+            })
             .collect();
-            
+
         assert!(names.contains(&"subdir".to_string()));
         assert!(names.contains(&"test.mp3".to_string()));
         assert!(!names.contains(&"test.txt".to_string()));
@@ -574,7 +664,7 @@ mod tests {
             app.state.select(Some(idx));
             app.enter_directory();
             assert_eq!(app.current_dir, subdir);
-            
+
             // Now go up
             app.load_directory(); // Reload to see ".."
             if let Some(idx_up) = app.items.iter().position(|p| p.ends_with("..")) {
@@ -584,13 +674,13 @@ mod tests {
             }
         }
     }
-    
+
     #[test]
     fn test_toggle_pause() {
         let mut app = App::new_test();
         // Initially not paused
         assert!(!app.is_paused);
-        
+
         if app.sink.is_some() {
             app.toggle_pause();
             assert!(app.is_paused);
@@ -606,27 +696,27 @@ mod tests {
         let p2 = PathBuf::from("2.mp3");
         let p3 = PathBuf::from("3.mp3");
         app.items = vec![p1.clone(), p2.clone(), p3.clone()];
-        
+
         // Simulate playing p1
         app.current_track = Some(p1.clone());
-        
+
         // Next track
         app.next_track();
         assert_eq!(app.current_track, Some(p2.clone()));
-        
+
         // Next track
         app.next_track();
         assert_eq!(app.current_track, Some(p3.clone()));
-        
+
         // Next track (should stop at end or wrap? Code says: for i in (idx + 1)..self.items.len())
         // It does NOT wrap.
         app.next_track();
         assert_eq!(app.current_track, Some(p3.clone())); // Stays same if no next track found
-        
+
         // Previous track
         app.previous_track();
         assert_eq!(app.current_track, Some(p2.clone()));
-        
+
         app.previous_track();
         assert_eq!(app.current_track, Some(p1.clone()));
     }
@@ -638,7 +728,7 @@ mod tests {
         app.state.select(None);
         app.next();
         assert_eq!(app.state.selected(), Some(0));
-        
+
         app.state.select(None);
         app.previous();
         assert_eq!(app.state.selected(), Some(0));
@@ -651,22 +741,28 @@ mod tests {
         let f2 = temp.path().join("a.mp3");
         let d1 = temp.path().join("z_dir");
         let d2 = temp.path().join("a_dir");
-        
+
         fs::File::create(&f1).unwrap();
         fs::File::create(&f2).unwrap();
         fs::create_dir(&d1).unwrap();
         fs::create_dir(&d2).unwrap();
-        
+
         let mut app = App::new_test();
         app.current_dir = temp.path().to_path_buf();
         app.load_directory();
-        
-        let names: Vec<String> = app.items.iter()
-            .map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "..".to_string()))
+
+        let names: Vec<String> = app
+            .items
+            .iter()
+            .map(|p| {
+                p.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "..".to_string())
+            })
             .collect();
-            
+
         let filtered: Vec<String> = names.into_iter().filter(|n| n != "..").collect();
-        
+
         assert_eq!(filtered, vec!["a_dir", "z_dir", "a.mp3", "b.mp3"]);
     }
 
@@ -675,13 +771,13 @@ mod tests {
         let temp = tempdir().unwrap();
         let f1 = temp.path().join("test.mp3");
         fs::File::create(&f1).unwrap();
-        
+
         let mut app = App::new_test();
         app.items = vec![f1.clone()];
         app.state.select(Some(0));
-        
+
         app.enter_directory();
-        
+
         assert_eq!(app.current_track, Some(f1));
         assert!(!app.is_paused);
     }
@@ -690,7 +786,7 @@ mod tests {
     fn test_play_file_with_wav() {
         let temp = tempdir().unwrap();
         let file_path = temp.path().join("test.wav");
-        
+
         let spec = hound::WavSpec {
             channels: 1,
             sample_rate: 44100,
@@ -707,7 +803,7 @@ mod tests {
 
         let mut app = App::new_test();
         app.play_file(file_path.clone());
-        
+
         assert_eq!(app.current_track, Some(file_path));
         assert!(app.track_duration.is_some());
         assert!(app.playback_start.is_some());
@@ -731,7 +827,9 @@ mod tests {
         }
 
         fn read(&mut self) -> io::Result<Event> {
-            self.events.pop_front().ok_or(io::Error::other("No more events"))
+            self.events
+                .pop_front()
+                .ok_or(io::Error::other("No more events"))
         }
     }
 
@@ -740,7 +838,7 @@ mod tests {
         let backend = ratatui::backend::TestBackend::new(100, 50);
         let mut terminal = Terminal::new(backend).unwrap();
         let mut app = App::new_test();
-        
+
         // Add some items to navigate
         app.items.push(PathBuf::from("a"));
         app.items.push(PathBuf::from("b"));
@@ -760,11 +858,11 @@ mod tests {
             Event::Key(crossterm::event::KeyEvent::from(KeyCode::Backspace)), // Go Up
             Event::Key(crossterm::event::KeyEvent::from(KeyCode::Char('q'))), // Quit
         ];
-        
+
         let mut event_source = MockEventSource::new(events);
-        
+
         run_app(&mut terminal, &mut app, &mut event_source).unwrap();
-        
+
         assert_eq!(app.state.selected(), Some(0));
         assert!(matches!(app.mode, AppMode::FileSystem));
     }
@@ -779,7 +877,7 @@ mod tests {
         let source = rodio::source::Zero::<f32>::new(1, 44100);
         // Box it
         let boxed_source: Box<dyn Source<Item = f32> + Send> = Box::new(source);
-        
+
         // Send it
         tx.send(boxed_source).unwrap();
 
@@ -803,7 +901,7 @@ mod tests {
             listeners: "0".to_string(),
             playlists: vec![],
         };
-        
+
         app.play_radio(channel);
         assert!(app.source_receiver.is_some());
     }
@@ -812,29 +910,136 @@ mod tests {
     fn test_radio_navigation() {
         let mut app = App::new_test();
         app.mode = AppMode::Radio;
-        
+
         // Add dummy stations
         app.radio_stations.push(crate::radio::Channel {
-            id: "1".to_string(), title: "1".to_string(), description: "".to_string(),
-            dj: "".to_string(), genre: "".to_string(), image: None, listeners: "".to_string(), playlists: vec![]
+            id: "1".to_string(),
+            title: "1".to_string(),
+            description: "".to_string(),
+            dj: "".to_string(),
+            genre: "".to_string(),
+            image: None,
+            listeners: "".to_string(),
+            playlists: vec![],
         });
         app.radio_stations.push(crate::radio::Channel {
-            id: "2".to_string(), title: "2".to_string(), description: "".to_string(),
-            dj: "".to_string(), genre: "".to_string(), image: None, listeners: "".to_string(), playlists: vec![]
+            id: "2".to_string(),
+            title: "2".to_string(),
+            description: "".to_string(),
+            dj: "".to_string(),
+            genre: "".to_string(),
+            image: None,
+            listeners: "".to_string(),
+            playlists: vec![],
         });
-        
+
         app.radio_state.select(Some(0));
-        
+
         app.next();
         assert_eq!(app.radio_state.selected(), Some(1));
-        
+
         app.next();
         assert_eq!(app.radio_state.selected(), Some(0)); // Wrap around
-        
+
         app.previous();
         assert_eq!(app.radio_state.selected(), Some(1)); // Wrap around
-        
+
         app.previous();
         assert_eq!(app.radio_state.selected(), Some(0));
+    }
+
+    #[test]
+    fn test_toggle_loop() {
+        let mut app = App::new_test();
+        assert!(matches!(app.loop_mode, LoopMode::Off));
+
+        app.toggle_loop();
+        assert!(matches!(app.loop_mode, LoopMode::Track));
+
+        app.toggle_loop();
+        assert!(matches!(app.loop_mode, LoopMode::All));
+
+        app.toggle_loop();
+        assert!(matches!(app.loop_mode, LoopMode::Off));
+    }
+
+    #[test]
+    fn test_next_track_loop_all() {
+        let mut app = App::new_test();
+        let p1 = PathBuf::from("1.mp3");
+        let p2 = PathBuf::from("2.mp3");
+        app.items = vec![p1.clone(), p2.clone()];
+        app.loop_mode = LoopMode::All;
+
+        // Play last track
+        app.current_track = Some(p2.clone());
+        
+        // Next track should wrap to first
+        app.next_track();
+        // Note: play_file logic might fail if file doesn't exist, but we check if it *tried* to play p1
+        // Since play_file sets current_track, we can check that.
+        // However, play_file checks if file exists before setting current_track fully?
+        // Let's check play_file implementation.
+        // play_file sets current_track = Some(path.clone()) at the very beginning.
+        assert_eq!(app.current_track, Some(p1));
+    }
+
+    #[test]
+    fn test_auto_advance_loop_track() {
+        let mut app = App::new_test();
+        let p1 = PathBuf::from("1.mp3");
+        app.items = vec![p1.clone()];
+        app.loop_mode = LoopMode::Track;
+        app.current_track = Some(p1.clone());
+        app.is_paused = false;
+
+        // Mock sink being empty is hard because Sink::new_idle() returns a sink that is always empty?
+        // If sink is empty, on_tick should trigger replay.
+        
+        // We need to ensure play_file is called.
+        // play_file sets playback_start to Some(Instant::now()).
+        app.playback_start = None;
+        
+        app.on_tick();
+        
+        // If it replayed, playback_start should be set.
+        // However, play_file also tries to open the file. If file doesn't exist, it might fail partway.
+        // But current_track is set at start of play_file.
+        // Let's create a real file for this test.
+        let temp = tempdir().unwrap();
+        let file_path = temp.path().join("test.mp3");
+        fs::File::create(&file_path).unwrap();
+        
+        app.items = vec![file_path.clone()];
+        app.current_track = Some(file_path.clone());
+        
+        // Reset playback_start to check if it gets updated
+        app.playback_start = None;
+        
+        app.on_tick();
+        
+        assert!(app.playback_start.is_some());
+        assert_eq!(app.current_track, Some(file_path));
+    }
+
+    #[test]
+    fn test_auto_advance_loop_all() {
+        let temp = tempdir().unwrap();
+        let p1 = temp.path().join("1.mp3");
+        let p2 = temp.path().join("2.mp3");
+        fs::File::create(&p1).unwrap();
+        fs::File::create(&p2).unwrap();
+
+        let mut app = App::new_test();
+        app.items = vec![p1.clone(), p2.clone()];
+        app.loop_mode = LoopMode::All;
+        app.current_track = Some(p1.clone());
+        app.is_paused = false;
+
+        // Sink is empty by default with new_idle()
+        app.on_tick();
+
+        // Should have advanced to p2
+        assert_eq!(app.current_track, Some(p2));
     }
 }
