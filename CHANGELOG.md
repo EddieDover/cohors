@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/EddieDover/cohors/compare/v0.5.1...v0.5.2) (2025-11-28)
+
+
+### Bug Fixes
+
+* correct windows build issue ([23d1e17](https://github.com/EddieDover/cohors/commit/23d1e17f505af89d59e6ef2f4d7eec97143df4ab))
+
 ## [0.5.1](https://github.com/EddieDover/cohors/compare/v0.5.0...v0.5.1) (2025-11-28)
 
 
