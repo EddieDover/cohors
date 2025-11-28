@@ -51,6 +51,7 @@ pub struct App {
     pub http_client: reqwest::blocking::Client,
     // UI State
     pub show_about: bool,
+    pub show_hidden: bool,
     // Looping Mode
     pub loop_mode: LoopMode,
 }
@@ -101,6 +102,7 @@ impl App {
             source_receiver: None,
             http_client: reqwest::blocking::Client::new(),
             show_about: false,
+            show_hidden: false,
             loop_mode: LoopMode::Off,
         };
         app.load_directory();
@@ -140,6 +142,7 @@ impl App {
             source_receiver: None,
             http_client: reqwest::blocking::Client::new(),
             show_about: false,
+            show_hidden: false,
             loop_mode: LoopMode::Off,
         }
     }
@@ -156,6 +159,12 @@ impl App {
         if let Ok(entries) = fs::read_dir(&self.current_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
+                let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+                if !self.show_hidden && file_name.starts_with('.') {
+                    continue;
+                }
+
                 if path.is_dir() {
                     entries_vec.push(path);
                 } else if let Some(ext) = path.extension() {
@@ -536,14 +545,18 @@ pub fn run_app<B: Backend, E: EventSource>(
             if let Event::Key(key) = event {
                 if app.show_about {
                     match key.code {
-                        KeyCode::Char('h') | KeyCode::Esc => app.show_about = false,
+                        KeyCode::Char('?') | KeyCode::Esc => app.show_about = false,
                         KeyCode::Char('q') => return Ok(()),
                         _ => {}
                     }
                 } else {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Char('h') => app.show_about = true,
+                        KeyCode::Char('?') => app.show_about = true,
+                        KeyCode::Char('h') => {
+                            app.show_hidden = !app.show_hidden;
+                            app.load_directory();
+                        }
                         KeyCode::Tab => {
                             app.mode = match app.mode {
                                 AppMode::FileSystem => AppMode::Radio,
@@ -973,7 +986,7 @@ mod tests {
 
         // Play last track
         app.current_track = Some(p2.clone());
-        
+
         // Next track should wrap to first
         app.next_track();
         // Note: play_file logic might fail if file doesn't exist, but we check if it *tried* to play p1
@@ -995,13 +1008,13 @@ mod tests {
 
         // Mock sink being empty is hard because Sink::new_idle() returns a sink that is always empty?
         // If sink is empty, on_tick should trigger replay.
-        
+
         // We need to ensure play_file is called.
         // play_file sets playback_start to Some(Instant::now()).
         app.playback_start = None;
-        
+
         app.on_tick();
-        
+
         // If it replayed, playback_start should be set.
         // However, play_file also tries to open the file. If file doesn't exist, it might fail partway.
         // But current_track is set at start of play_file.
@@ -1009,15 +1022,15 @@ mod tests {
         let temp = tempdir().unwrap();
         let file_path = temp.path().join("test.mp3");
         fs::File::create(&file_path).unwrap();
-        
+
         app.items = vec![file_path.clone()];
         app.current_track = Some(file_path.clone());
-        
+
         // Reset playback_start to check if it gets updated
         app.playback_start = None;
-        
+
         app.on_tick();
-        
+
         assert!(app.playback_start.is_some());
         assert_eq!(app.current_track, Some(file_path));
     }
@@ -1041,5 +1054,47 @@ mod tests {
 
         // Should have advanced to p2
         assert_eq!(app.current_track, Some(p2));
+    }
+
+    #[test]
+    fn test_toggle_hidden_files() {
+        let temp = tempdir().unwrap();
+        let normal_file = temp.path().join("normal.mp3");
+        let hidden_file = temp.path().join(".hidden.mp3");
+
+        fs::File::create(&normal_file).unwrap();
+        fs::File::create(&hidden_file).unwrap();
+
+        let mut app = App::new_test();
+        app.current_dir = temp.path().to_path_buf();
+
+        // Default: Hidden files hidden
+        app.load_directory();
+        let has_hidden = app
+            .items
+            .iter()
+            .any(|p| p.file_name().and_then(|n| n.to_str()).unwrap_or("") == ".hidden.mp3");
+        assert!(!has_hidden, "Hidden files should not be shown by default");
+
+        // Toggle show_hidden
+        app.show_hidden = true;
+        app.load_directory();
+        let has_hidden = app
+            .items
+            .iter()
+            .any(|p| p.file_name().and_then(|n| n.to_str()).unwrap_or("") == ".hidden.mp3");
+        assert!(
+            has_hidden,
+            "Hidden files should be shown when show_hidden is true"
+        );
+
+        // Toggle back
+        app.show_hidden = false;
+        app.load_directory();
+        let has_hidden = app
+            .items
+            .iter()
+            .any(|p| p.file_name().and_then(|n| n.to_str()).unwrap_or("") == ".hidden.mp3");
+        assert!(!has_hidden, "Hidden files should be hidden again");
     }
 }
