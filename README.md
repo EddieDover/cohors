@@ -23,6 +23,7 @@ A TUI music player written in Rust.
 | `-` | Volume Down |
 | `→` | Next Track |
 | `←` | Previous Track |
+| `l` | Toggle Loop Mode (Off / Track/ Folder) |
 
 ## Attribution
 This application uses the SomaFM API to provide radio channels.
