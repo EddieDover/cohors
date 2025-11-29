@@ -13,6 +13,7 @@ A TUI music player written in Rust.
 | --- | --- |
 | `q` | Quit Application |
 | `TAB` | Toggle Mode (Files / Radio) |
+| `/` | Search / Filter |
 | `?` | Toggle Help / About |
 | `j` / `↓` | Move Selection Down |
 | `k` / `↑` | Move Selection Up |

@@ -123,6 +123,7 @@ fn main() -> Result<()> {
         Ok(groups) => {
             println!("Loaded {} groups", groups.len());
             app.radio_groups = groups;
+            app.update_search_results(); // Initialize filtered groups
             app.radio_state.select(Some(0));
         }
         Err(e) => {
