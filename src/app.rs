@@ -64,6 +64,11 @@ pub struct App {
     pub show_hidden: bool,
     // Looping Mode
     pub loop_mode: LoopMode,
+    // Search
+    pub is_searching: bool,
+    pub search_query: String,
+    pub filtered_items: Vec<PathBuf>,
+    pub filtered_radio_groups: Vec<RadioGroup>,
 }
 
 impl App {
@@ -116,6 +121,10 @@ impl App {
             show_about: false,
             show_hidden: false,
             loop_mode: LoopMode::Off,
+            is_searching: false,
+            search_query: String::new(),
+            filtered_items: Vec::new(),
+            filtered_radio_groups: Vec::new(),
         };
         app.load_directory();
         app
@@ -158,6 +167,10 @@ impl App {
             show_about: false,
             show_hidden: false,
             loop_mode: LoopMode::Off,
+            is_searching: false,
+            search_query: String::new(),
+            filtered_items: Vec::new(),
+            filtered_radio_groups: Vec::new(),
         }
     }
 
@@ -203,12 +216,87 @@ impl App {
         });
 
         self.items.extend(entries_vec);
+        self.update_search_results();
         self.state.select(Some(0));
+    }
+
+    pub fn update_search_results(&mut self) {
+        if self.search_query.is_empty() {
+            self.filtered_items = self.items.clone();
+            self.filtered_radio_groups = self.radio_groups.clone();
+        } else {
+            let query = self.search_query.to_lowercase();
+            // Filter files
+            self.filtered_items = self
+                .items
+                .iter()
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|s| s.to_lowercase().contains(&query))
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
+
+            // Filter radio
+            self.filtered_radio_groups = self
+                .radio_groups
+                .iter()
+                .map(|g| {
+                    let mut new_group = g.clone();
+                    new_group
+                        .stations
+                        .retain(|s| s.name.to_lowercase().contains(&query));
+                    new_group
+                })
+                .filter(|g| !g.stations.is_empty())
+                .collect();
+        }
+    }
+
+    pub fn on_search_input(&mut self, c: char) {
+        self.search_query.push(c);
+        self.update_search_results();
+        // Reset selection
+        match self.mode {
+            AppMode::FileSystem => self.state.select(Some(0)),
+            AppMode::Radio => self.radio_state.select(Some(0)),
+            AppMode::Favorites => self.favorites_state.select(Some(0)),
+        }
+    }
+
+    pub fn on_search_backspace(&mut self) {
+        self.search_query.pop();
+        self.update_search_results();
+        // Reset selection
+        match self.mode {
+            AppMode::FileSystem => self.state.select(Some(0)),
+            AppMode::Radio => self.radio_state.select(Some(0)),
+            AppMode::Favorites => self.favorites_state.select(Some(0)),
+        }
+    }
+
+    pub fn cancel_search(&mut self) {
+        self.is_searching = false;
+        self.search_query.clear();
+        self.update_search_results();
+        // Reset selection
+        match self.mode {
+            AppMode::FileSystem => self.state.select(Some(0)),
+            AppMode::Radio => self.radio_state.select(Some(0)),
+            AppMode::Favorites => self.favorites_state.select(Some(0)),
+        }
+    }
+
+    pub fn submit_search(&mut self) {
+        self.is_searching = false;
+        // Keep the filter active
     }
 
     pub fn get_visible_radio_count(&self) -> usize {
         let mut count = 0;
-        for group in &self.radio_groups {
+        for group in &self.filtered_radio_groups {
             count += 1; // The group header
             if group.is_expanded {
                 count += group.stations.len();
@@ -240,7 +328,7 @@ impl App {
             AppMode::FileSystem => {
                 let i = match self.state.selected() {
                     Some(i) => {
-                        if i >= self.items.len().saturating_sub(1) {
+                        if i >= self.filtered_items.len().saturating_sub(1) {
                             0
                         } else {
                             i + 1
@@ -287,7 +375,7 @@ impl App {
                 let i = match self.state.selected() {
                     Some(i) => {
                         if i == 0 {
-                            self.items.len().saturating_sub(1)
+                            self.filtered_items.len().saturating_sub(1)
                         } else {
                             i - 1
                         }
@@ -330,7 +418,11 @@ impl App {
     pub fn enter_directory(&mut self) {
         match self.mode {
             AppMode::FileSystem => {
-                if let Some(path) = self.state.selected().and_then(|i| self.items.get(i)) {
+                if let Some(path) = self
+                    .state
+                    .selected()
+                    .and_then(|i| self.filtered_items.get(i))
+                {
                     if path.ends_with("..") {
                         self.go_up();
                     } else if path.is_dir() {
@@ -353,7 +445,7 @@ impl App {
                 let selected_idx = self.radio_state.selected().unwrap_or(0);
                 let mut current_idx = 0;
 
-                for (g_idx, group) in self.radio_groups.iter().enumerate() {
+                for (g_idx, group) in self.filtered_radio_groups.iter().enumerate() {
                     if current_idx == selected_idx {
                         action = Some(Action::ToggleGroup(g_idx));
                         break;
@@ -372,9 +464,18 @@ impl App {
 
                 match action {
                     Some(Action::ToggleGroup(idx)) => {
-                        if let Some(group) = self.radio_groups.get_mut(idx) {
-                            group.is_expanded = !group.is_expanded;
+                        // We need to find the corresponding group in the original list to toggle it
+                        // Because filtered_radio_groups is derived
+                        if let Some(filtered_group) = self.filtered_radio_groups.get(idx) {
+                            let title = &filtered_group.title;
+                            if let Some(original_group) =
+                                self.radio_groups.iter_mut().find(|g| &g.title == title)
+                            {
+                                original_group.is_expanded = !original_group.is_expanded;
+                            }
                         }
+                        // Re-filter to update view
+                        self.update_search_results();
                     }
                     Some(Action::PlayStation(station)) => {
                         self.play_radio(station);
@@ -623,15 +724,15 @@ impl App {
             return;
         }
 
-        // Find current track index in items
+        // Find current track index in filtered items
         if let Some(idx) = self
             .current_track
             .as_ref()
-            .and_then(|cp| self.items.iter().position(|p| p == cp))
+            .and_then(|cp| self.filtered_items.iter().position(|p| p == cp))
         {
             // Find next playable file
-            for i in (idx + 1)..self.items.len() {
-                let path = &self.items[i];
+            for i in (idx + 1)..self.filtered_items.len() {
+                let path = &self.filtered_items[i];
                 if !path.is_dir() && path.file_name().and_then(|n| n.to_str()) != Some("..") {
                     self.play_file(path.clone());
                     self.state.select(Some(i)); // Move selection to playing file
@@ -642,7 +743,7 @@ impl App {
             // If LoopMode::All, wrap around
             if matches!(self.loop_mode, LoopMode::All) {
                 for i in 0..=idx {
-                    let path = &self.items[i];
+                    let path = &self.filtered_items[i];
                     if !path.is_dir() && path.file_name().and_then(|n| n.to_str()) != Some("..") {
                         self.play_file(path.clone());
                         self.state.select(Some(i)); // Move selection to playing file
@@ -662,11 +763,11 @@ impl App {
         if let Some(idx) = self
             .current_track
             .as_ref()
-            .and_then(|cp| self.items.iter().position(|p| p == cp))
+            .and_then(|cp| self.filtered_items.iter().position(|p| p == cp))
         {
             // Find previous playable file
             for i in (0..idx).rev() {
-                let path = &self.items[i];
+                let path = &self.filtered_items[i];
                 if !path.is_dir() && path.file_name().and_then(|n| n.to_str()) != Some("..") {
                     self.play_file(path.clone());
                     self.state.select(Some(i));
@@ -772,7 +873,15 @@ pub fn run_app<B: Backend, E: EventSource>(
         if events.poll(Duration::from_millis(50))? {
             let event = events.read()?;
             if let Event::Key(key) = event {
-                if app.show_about {
+                if app.is_searching {
+                    match key.code {
+                        KeyCode::Esc => app.cancel_search(),
+                        KeyCode::Enter => app.submit_search(),
+                        KeyCode::Backspace => app.on_search_backspace(),
+                        KeyCode::Char(c) => app.on_search_input(c),
+                        _ => {}
+                    }
+                } else if app.show_about {
                     match key.code {
                         KeyCode::Char('?') | KeyCode::Esc => app.show_about = false,
                         KeyCode::Char('q') => return Ok(()),
@@ -782,6 +891,16 @@ pub fn run_app<B: Backend, E: EventSource>(
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('?') => app.show_about = true,
+                        KeyCode::Char('/') => {
+                            app.is_searching = true;
+                            app.search_query.clear();
+                            app.update_search_results();
+                        }
+                        KeyCode::Esc => {
+                            if !app.search_query.is_empty() {
+                                app.cancel_search();
+                            }
+                        }
                         KeyCode::Char('h') => {
                             app.show_hidden = !app.show_hidden;
                             app.load_directory();
@@ -792,6 +911,10 @@ pub fn run_app<B: Backend, E: EventSource>(
                                 AppMode::Radio => AppMode::Favorites,
                                 AppMode::Favorites => AppMode::FileSystem,
                             };
+                            // Reset search when switching modes?
+                            // Maybe better to keep it separate or clear it.
+                            // Let's clear it for simplicity.
+                            app.cancel_search();
                         }
                         KeyCode::Char('j') | KeyCode::Down => app.next(),
                         KeyCode::Char('k') | KeyCode::Up => app.previous(),
@@ -829,6 +952,7 @@ mod tests {
     fn test_navigation() {
         let mut app = App::new_test();
         app.items = vec![PathBuf::from("a"), PathBuf::from("b"), PathBuf::from("c")];
+        app.update_search_results();
         app.state.select(Some(0));
 
         app.next();
@@ -940,6 +1064,7 @@ mod tests {
         let p2 = PathBuf::from("2.mp3");
         let p3 = PathBuf::from("3.mp3");
         app.items = vec![p1.clone(), p2.clone(), p3.clone()];
+        app.update_search_results();
 
         // Simulate playing p1
         app.current_track = Some(p1.clone());
@@ -952,8 +1077,6 @@ mod tests {
         app.next_track();
         assert_eq!(app.current_track, Some(p3.clone()));
 
-        // Next track (should stop at end or wrap? Code says: for i in (idx + 1)..self.items.len())
-        // It does NOT wrap.
         app.next_track();
         assert_eq!(app.current_track, Some(p3.clone())); // Stays same if no next track found
 
@@ -969,6 +1092,7 @@ mod tests {
     fn test_navigation_none_selected() {
         let mut app = App::new_test();
         app.items = vec![PathBuf::from("a")];
+        app.update_search_results();
         app.state.select(None);
         app.next();
         assert_eq!(app.state.selected(), Some(0));
@@ -1018,6 +1142,7 @@ mod tests {
 
         let mut app = App::new_test();
         app.items = vec![f1.clone()];
+        app.update_search_results();
         app.state.select(Some(0));
 
         app.enter_directory();
@@ -1086,6 +1211,7 @@ mod tests {
         // Add some items to navigate
         app.items.push(PathBuf::from("a"));
         app.items.push(PathBuf::from("b"));
+        app.update_search_results();
         app.state.select(Some(0));
 
         let events = vec![
@@ -1170,6 +1296,7 @@ mod tests {
             }],
             is_expanded: true,
         });
+        app.update_search_results();
 
         app.radio_state.select(Some(0)); // Group header
 
@@ -1207,6 +1334,7 @@ mod tests {
         let p1 = PathBuf::from("1.mp3");
         let p2 = PathBuf::from("2.mp3");
         app.items = vec![p1.clone(), p2.clone()];
+        app.update_search_results();
         app.loop_mode = LoopMode::All;
 
         // Play last track
@@ -1227,6 +1355,7 @@ mod tests {
         let mut app = App::new_test();
         let p1 = PathBuf::from("1.mp3");
         app.items = vec![p1.clone()];
+        app.update_search_results();
         app.loop_mode = LoopMode::Track;
         app.current_track = Some(p1.clone());
         app.is_paused = false;
@@ -1249,6 +1378,7 @@ mod tests {
         fs::File::create(&file_path).unwrap();
 
         app.items = vec![file_path.clone()];
+        app.update_search_results();
         app.current_track = Some(file_path.clone());
 
         // Reset playback_start to check if it gets updated
@@ -1270,6 +1400,7 @@ mod tests {
 
         let mut app = App::new_test();
         app.items = vec![p1.clone(), p2.clone()];
+        app.update_search_results();
         app.loop_mode = LoopMode::All;
         app.current_track = Some(p1.clone());
         app.is_paused = false;
@@ -1423,7 +1554,7 @@ mod tests {
         app.play_radio(station);
 
         // Wait for thread
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(500));
 
         // Check source_receiver
         if let Some(rx) = &app.source_receiver {
@@ -1476,6 +1607,94 @@ mod tests {
 
         app.toggle_favorite();
         assert!(!app.favorites.is_favorite_station(&station));
+    }
+
+    #[test]
+    fn test_on_search_input() {
+        let mut app = App::new_test();
+        app.items = vec![PathBuf::from("apple"), PathBuf::from("banana")];
+        app.update_search_results();
+
+        app.on_search_input('a');
+        assert_eq!(app.search_query, "a");
+        assert_eq!(app.filtered_items.len(), 2); // apple, banana
+
+        app.on_search_input('p');
+        assert_eq!(app.search_query, "ap");
+        assert_eq!(app.filtered_items.len(), 1); // apple
+    }
+
+    #[test]
+    fn test_on_search_backspace() {
+        let mut app = App::new_test();
+        app.items = vec![PathBuf::from("apple"), PathBuf::from("banana")];
+        app.search_query = "ap".to_string();
+        app.update_search_results();
+        assert_eq!(app.filtered_items.len(), 1);
+
+        app.on_search_backspace();
+        assert_eq!(app.search_query, "a");
+        assert_eq!(app.filtered_items.len(), 2);
+    }
+
+    #[test]
+    fn test_cancel_search() {
+        let mut app = App::new_test();
+        app.is_searching = true;
+        app.search_query = "ap".to_string();
+        app.update_search_results();
+
+        app.cancel_search();
+        assert!(!app.is_searching);
+        assert!(app.search_query.is_empty());
+        assert_eq!(app.filtered_items.len(), 0); // items is empty in new_test
+    }
+
+    #[test]
+    fn test_submit_search() {
+        let mut app = App::new_test();
+        app.is_searching = true;
+        app.search_query = "ap".to_string();
+
+        app.submit_search();
+        assert!(!app.is_searching);
+        assert_eq!(app.search_query, "ap");
+    }
+
+    #[test]
+    fn test_search_radio() {
+        let mut app = App::new_test();
+        app.mode = AppMode::Radio;
+
+        let station1 = crate::radio::RadioStation {
+            name: "Rock FM".to_string(),
+            url: "url1".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        };
+        let station2 = crate::radio::RadioStation {
+            name: "Jazz FM".to_string(),
+            url: "url2".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        };
+
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Group 1".to_string(),
+            stations: vec![station1, station2],
+            is_expanded: true,
+        });
+
+        app.search_query = "Rock".to_string();
+        app.update_search_results();
+
+        assert_eq!(app.filtered_radio_groups.len(), 1);
+        assert_eq!(app.filtered_radio_groups[0].stations.len(), 1);
+        assert_eq!(app.filtered_radio_groups[0].stations[0].name, "Rock FM");
     }
 
     #[test]
@@ -1557,6 +1776,7 @@ mod tests {
             stations: vec![station],
             is_expanded: false,
         });
+        app.update_search_results();
 
         // 1. Toggle Group (Expand)
         app.radio_state.select(Some(0));
@@ -1591,7 +1811,7 @@ mod tests {
         };
 
         app.play_radio(station);
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(500));
 
         if let Some(rx) = &app.source_receiver {
             match rx.try_recv() {
@@ -1616,7 +1836,7 @@ mod tests {
         };
 
         app.play_radio(station);
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(500));
 
         if let Some(rx) = &app.source_receiver {
             match rx.try_recv() {

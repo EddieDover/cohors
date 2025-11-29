@@ -1,12 +1,4 @@
 [alias]
-# Full coverage report with HTML and XML output
-coverage = "tarpaulin --workspace --all-features --timeout 120 --out html --out xml --output-dir coverage --exclude-files src/main.rs  --ignore-tests"
-
-# Quick coverage check (just show percentage)
-coverage-check = "tarpaulin --workspace --all-features --timeout 120  --exclude-files src/main.rs --ignore-tests"
-
-# Coverage with lcov output
-coverage-lcov = "tarpaulin --workspace --all-features --timeout 120 --out lcov  --exclude-files src/main.rs  --ignore-tests"
 
 # Strict Clippy check
 strict = "clippy --workspace --all-targets --all-features -- -D warnings"

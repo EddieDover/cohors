@@ -160,7 +160,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
             // Left Sidebar: File List
             let items: Vec<ListItem> = app
-                .items
+                .filtered_items
                 .iter()
                 .map(|path| {
                     let mut name = path
@@ -197,7 +197,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
             // Right Panel: Info
             let info_text = if let Some(i) = app.state.selected() {
-                if let Some(path) = app.items.get(i) {
+                if let Some(path) = app.filtered_items.get(i) {
                     format!(
                         "Selected: {}\nPath: {}",
                         path.file_name().unwrap_or_default().to_string_lossy(),
@@ -247,7 +247,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             let mut current_idx = 0;
             let mut selected_item_info = None;
 
-            'outer: for group in &app.radio_groups {
+            'outer: for group in &app.filtered_radio_groups {
                 // Group Header
                 if current_idx >= start && current_idx < end {
                     let prefix = if group.is_expanded { "v " } else { "> " };
@@ -416,20 +416,32 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(10)])
         .split(chunks[2]);
 
-    let help_text = match app.mode {
-        AppMode::FileSystem => {
-            " q:Quit | TAB:Switch Mode | ?:About | h:Hidden | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track | l:Loop | f:Fav "
-        }
-        AppMode::Radio => {
-            " q:Quit | TAB:Switch Mode | ?:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol | f:Fav "
-        }
-        AppMode::Favorites => {
-            " q:Quit | TAB:Switch Mode | ?:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol | f:Unfav "
-        }
-    };
-    let help_paragraph =
-        Paragraph::new(help_text).style(Style::default().fg(Color::Black).bg(Color::White));
-    f.render_widget(help_paragraph, help_layout[0]);
+    if app.is_searching {
+        let search_text = format!("Search: {}_", app.search_query);
+        let search_paragraph =
+            Paragraph::new(search_text).style(Style::default().fg(Color::Black).bg(Color::Yellow));
+        f.render_widget(search_paragraph, help_layout[0]);
+    } else if !app.search_query.is_empty() {
+        let search_text = format!("Filter: {}", app.search_query);
+        let search_paragraph =
+            Paragraph::new(search_text).style(Style::default().fg(Color::Black).bg(Color::Blue));
+        f.render_widget(search_paragraph, help_layout[0]);
+    } else {
+        let help_text = match app.mode {
+            AppMode::FileSystem => {
+                " q:Quit | TAB:Switch Mode | /:Search | ?:About | h:Hidden | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track | l:Loop | f:Fav "
+            }
+            AppMode::Radio => {
+                " q:Quit | TAB:Switch Mode | /:Search | ?:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol | f:Fav "
+            }
+            AppMode::Favorites => {
+                " q:Quit | TAB:Switch Mode | ?:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol | f:Unfav "
+            }
+        };
+        let help_paragraph =
+            Paragraph::new(help_text).style(Style::default().fg(Color::Black).bg(Color::White));
+        f.render_widget(help_paragraph, help_layout[0]);
+    }
 
     let version_text = format!("v{} ", env!("CARGO_PKG_VERSION"));
     let version_paragraph = Paragraph::new(version_text)
@@ -590,6 +602,7 @@ mod tests {
             }],
             is_expanded: true,
         });
+        app.update_search_results();
         app.radio_state.select(Some(0));
 
         terminal.draw(|f| draw(f, &mut app)).unwrap();
@@ -619,6 +632,7 @@ mod tests {
             stations,
             is_expanded: true,
         });
+        app.update_search_results();
 
         // Select an item that requires scrolling (e.g., index 30)
         // Index 0 is group header, stations start at 1.
@@ -673,6 +687,7 @@ mod tests {
             stations: stations2,
             is_expanded: true,
         });
+        app.update_search_results();
 
         // Select something in Group 2 to force scrolling Group 1 out of view
         // List height is ~10 (minus borders/titles/etc).
@@ -719,6 +734,7 @@ mod tests {
             stations,
             is_expanded: true,
         });
+        app.update_search_results();
 
         // Set offset to 10, selected to 5
         app.radio_state = app.radio_state.clone().with_offset(10);
@@ -728,5 +744,66 @@ mod tests {
 
         // Offset should become 5
         assert_eq!(app.radio_state.offset(), 5);
+    }
+
+    #[test]
+    fn test_ui_draw_search_mode() {
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        app.is_searching = true;
+        app.search_query = "test".to_string();
+
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_ui_draw_search_filter_active() {
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        app.is_searching = false;
+        app.search_query = "filter".to_string();
+
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_ui_draw_loading() {
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        // Simulate loading state by setting source_receiver
+        let (_tx, rx) = std::sync::mpsc::channel();
+        app.source_receiver = Some(rx);
+
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_ui_draw_loop_modes() {
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        app.current_track = Some(PathBuf::from("test.mp3"));
+
+        app.loop_mode = crate::app::LoopMode::Track;
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+        app.loop_mode = crate::app::LoopMode::All;
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_ui_draw_current_track_highlight() {
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new_test();
+        let track = PathBuf::from("test.mp3");
+        app.items = vec![track.clone()];
+        app.update_search_results();
+        app.current_track = Some(track);
+
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
     }
 }

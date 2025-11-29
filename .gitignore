@@ -1,4 +1,5 @@
-/target
+/target*
 /dist
 NOTES.md
+FutureTodo.md
 stations.config.json

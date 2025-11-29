@@ -87,11 +87,14 @@ pub fn load_config(
     )
 }
 
-pub async fn fetch_all_stations(config_path: Option<PathBuf>) -> Result<Vec<RadioGroup>> {
+pub async fn fetch_all_stations(
+    config_path: Option<PathBuf>,
+    invalidate_cache: bool,
+) -> Result<Vec<RadioGroup>> {
     let config = load_config(config_path, None, None)?;
     let mut groups = Vec::new();
     for source in config.sources {
-        match fetch_stations(&source, None).await {
+        match fetch_stations(&source, None, invalidate_cache).await {
             Ok(stations) => {
                 groups.push(RadioGroup {
                     title: source.title,
@@ -123,11 +126,19 @@ fn get_cache_path(source_title: &str, home_dir: Option<PathBuf>) -> Option<PathB
 pub async fn fetch_stations(
     source: &RadioSourceConfig,
     home_dir: Option<PathBuf>,
+    invalidate_cache: bool,
 ) -> Result<Vec<RadioStation>> {
     let cache_path = get_cache_path(&source.title, home_dir);
     let mut cached_json: Option<Value> = None;
 
-    if let Some(path) = &cache_path
+    if invalidate_cache {
+        if let Some(path) = &cache_path
+            && path.exists()
+        {
+            let _ = fs::remove_file(path);
+            println!("  [CACHE] Invalidated '{}'", source.title);
+        }
+    } else if let Some(path) = &cache_path
         && path.exists()
     {
         // Check if file is less than 1 week old
@@ -400,7 +411,7 @@ mod tests {
         };
 
         // First fetch: Should hit web (mock) and save to cache
-        let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()))
+        let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false)
             .await
             .unwrap();
         assert_eq!(stations.len(), 1);
@@ -418,7 +429,7 @@ mod tests {
         fs::write(&cache_path, cached_content).unwrap();
 
         // Second fetch: Should hit cache
-        let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()))
+        let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false)
             .await
             .unwrap();
         assert_eq!(stations.len(), 1);
@@ -589,7 +600,7 @@ mod tests {
             },
         };
 
-        let result = fetch_stations(&source, None).await;
+        let result = fetch_stations(&source, None, false).await;
         assert!(result.is_err());
     }
 
@@ -617,7 +628,7 @@ mod tests {
             },
         };
 
-        let result = fetch_stations(&source, None).await;
+        let result = fetch_stations(&source, None, false).await;
         assert!(result.is_err());
     }
 
@@ -625,7 +636,7 @@ mod tests {
     #[ignore]
     async fn test_fetch_real_stations() {
         // Ensure we can find the config file in the current directory
-        let groups = fetch_all_stations(None).await.unwrap();
+        let groups = fetch_all_stations(None, false).await.unwrap();
         println!("Fetched {} groups", groups.len());
         for group in groups {
             println!("Group: {} ({} stations)", group.title, group.stations.len());
