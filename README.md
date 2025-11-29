@@ -36,13 +36,14 @@ A TUI music player written in Rust.
 | `-v`, `--volume <0-100>` | _(Optional)_ Set the initial volume (default: 100) |
 | `-r`, `--radio` | _(Optional)_ Start in Radio mode |
 | `-s`, `--station-file <PATH>` | _(Optional)_ Path to the station configuration file |
+| `--invalidate-cache` | Force the station list to be re-downloaded |
 | `-h`, `--help` | Print help information |
 | `-V`, `--version` | Print version information |
 | `[PATH]` | _(Optional)_ Path to a file or directory to play on startup |
 
 ## Radio Configuration
 
-Cohors supports internet radio by fetching station lists from JSON APIs. You can configure multiple sources in `stations.config.json`.
+Cohors supports internet radio by fetching station lists from JSON APIs. You can configure multiple sources in `stations.config.json`. The station data is downloaded and cached for one week. To invalidate the cache and force a re-download, use the `--invalidate-cache` argument.
 
 The application looks for the configuration file in the following order:
 1. The path specified by `--station-file <PATH>`
