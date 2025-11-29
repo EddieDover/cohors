@@ -1,6 +1,7 @@
 mod app;
 mod audio;
 mod favorites;
+mod mpris;
 mod radio;
 mod ui;
 
@@ -111,6 +112,25 @@ fn main() -> Result<()> {
     // Create app state first (to handle audio init noise before TUI)
     let mut app = App::new();
 
+    // Setup MPRIS
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mpris_state = std::sync::Arc::new(std::sync::Mutex::new(mpris::MprisState::default()));
+    app.mpris_state = Some(mpris_state.clone());
+
+    let (notifier_tx, notifier_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.mpris_notifier = Some(notifier_tx);
+
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            if let Ok(_handler) = mpris::MprisHandler::new(tx, mpris_state, notifier_rx).await {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                }
+            }
+        });
+    });
+
     apply_args(&mut app, args.clone());
 
     // Fetch radio stations
@@ -148,7 +168,7 @@ fn main() -> Result<()> {
 
     // Run app
     let mut events = app::CrosstermEvents;
-    let res = app::run_app(&mut terminal, &mut app, &mut events);
+    let res = app::run_app(&mut terminal, &mut app, &mut events, &rx);
 
     // Restore terminal
     disable_raw_mode()?;
@@ -165,7 +185,6 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests;

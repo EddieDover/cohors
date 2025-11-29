@@ -1,6 +1,34 @@
 use super::*;
+use std::env;
 use std::fs;
+use std::sync::Mutex;
 use tempfile::tempdir;
+
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+// Helper to run test with modified environment
+fn with_xdg_config_home<F>(path: &std::path::Path, f: F)
+where
+    F: FnOnce(),
+{
+    let _lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let key = "XDG_CONFIG_HOME";
+    let old_val = env::var_os(key);
+    unsafe {
+        env::set_var(key, path);
+    }
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    unsafe {
+        if let Some(val) = old_val {
+            env::set_var(key, val);
+        } else {
+            env::remove_var(key);
+        }
+    }
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
 
 #[test]
 fn test_app_initialization() {
@@ -296,7 +324,8 @@ fn test_run_app() {
 
     let mut event_source = MockEventSource::new(events);
 
-    run_app(&mut terminal, &mut app, &mut event_source).unwrap();
+    let (_tx, rx) = std::sync::mpsc::channel();
+    run_app(&mut terminal, &mut app, &mut event_source, &rx).unwrap();
 
     assert_eq!(app.state.selected(), Some(0));
     assert!(matches!(app.mode, AppMode::FileSystem));
@@ -633,41 +662,46 @@ fn test_play_radio_thread() {
 
 #[test]
 fn test_favorites() {
-    let mut app = App::new_test();
-    let path = PathBuf::from("test.mp3");
-    app.items.push(path.clone());
-    app.state.select(Some(0));
+    let dir = tempdir().unwrap();
+    let config_path = dir.path().to_path_buf();
 
-    // Toggle file favorite
-    app.toggle_favorite();
-    assert!(app.favorites.is_favorite_file(&path));
+    with_xdg_config_home(&config_path, || {
+        let mut app = App::new_test();
+        let path = PathBuf::from("test.mp3");
+        app.items.push(path.clone());
+        app.state.select(Some(0));
 
-    // Toggle again to remove
-    app.toggle_favorite();
-    assert!(!app.favorites.is_favorite_file(&path));
+        // Toggle file favorite
+        app.toggle_favorite();
+        assert!(app.favorites.is_favorite_file(&path));
 
-    // Radio favorite
-    app.mode = AppMode::Radio;
-    let station = crate::radio::RadioStation {
-        name: "Test Station".to_string(),
-        url: "http://test.com".to_string(),
-        description: None,
-        homepage: None,
-        tags: None,
-        last_playing: None,
-    };
-    app.radio_groups.push(crate::radio::RadioGroup {
-        title: "Test Group".to_string(),
-        stations: vec![station.clone()],
-        is_expanded: true,
+        // Toggle again to remove
+        app.toggle_favorite();
+        assert!(!app.favorites.is_favorite_file(&path));
+
+        // Radio favorite
+        app.mode = AppMode::Radio;
+        let station = crate::radio::RadioStation {
+            name: "Test Station".to_string(),
+            url: "http://test.com".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        };
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Test Group".to_string(),
+            stations: vec![station.clone()],
+            is_expanded: true,
+        });
+        app.radio_state.select(Some(1)); // 0 is group header, 1 is station
+
+        app.toggle_favorite();
+        assert!(app.favorites.is_favorite_station(&station));
+
+        app.toggle_favorite();
+        assert!(!app.favorites.is_favorite_station(&station));
     });
-    app.radio_state.select(Some(1)); // 0 is group header, 1 is station
-
-    app.toggle_favorite();
-    assert!(app.favorites.is_favorite_station(&station));
-
-    app.toggle_favorite();
-    assert!(!app.favorites.is_favorite_station(&station));
 }
 
 #[test]
@@ -905,4 +939,142 @@ fn test_play_radio_connection_error() {
             _ => panic!("Expected Connection error"),
         }
     }
+}
+
+#[test]
+fn test_mpris_commands() {
+    let mut app = App::new_test();
+
+    // Test Volume
+    app.handle_mpris_command(MprisCommand::Volume(0.5));
+    assert_eq!(app.volume, 0.5);
+
+    // Test Play/Pause
+    app.is_paused = false;
+    app.handle_mpris_command(MprisCommand::Pause);
+    assert!(app.is_paused);
+
+    app.handle_mpris_command(MprisCommand::Play);
+    assert!(!app.is_paused);
+
+    app.handle_mpris_command(MprisCommand::PlayPause);
+    assert!(app.is_paused);
+
+    // Test Stop (pauses for now)
+    app.is_paused = false;
+    app.handle_mpris_command(MprisCommand::Stop);
+    assert!(app.is_paused);
+
+    // Test Next/Prev (mock items)
+    app.items = vec![PathBuf::from("a"), PathBuf::from("b")];
+    app.update_search_results();
+    app.state.select(Some(0));
+    app.current_track = Some(PathBuf::from("a"));
+
+    app.handle_mpris_command(MprisCommand::Next);
+    assert_eq!(app.state.selected(), Some(1));
+
+    app.handle_mpris_command(MprisCommand::Previous);
+    assert_eq!(app.state.selected(), Some(0));
+
+    // Test Seek
+    app.is_paused = true;
+    app.playback_start = None;
+    app.playback_elapsed = Duration::from_secs(10);
+    app.handle_mpris_command(MprisCommand::Seek(5_000_000)); // +5s
+    assert_eq!(app.playback_elapsed, Duration::from_secs(15));
+
+    app.handle_mpris_command(MprisCommand::Seek(-2_000_000)); // -2s
+    assert_eq!(app.playback_elapsed, Duration::from_secs(13));
+
+    // Test SetPosition
+    app.handle_mpris_command(MprisCommand::SetPosition("id".to_string(), 30_000_000)); // 30s
+    assert_eq!(app.playback_elapsed, Duration::from_secs(30));
+
+    // Test LoopStatus
+    app.handle_mpris_command(MprisCommand::LoopStatus(mpris_server::LoopStatus::Track));
+    assert!(matches!(app.loop_mode, LoopMode::Track));
+
+    app.handle_mpris_command(MprisCommand::LoopStatus(mpris_server::LoopStatus::Playlist));
+    assert!(matches!(app.loop_mode, LoopMode::All));
+
+    app.handle_mpris_command(MprisCommand::LoopStatus(mpris_server::LoopStatus::None));
+    assert!(matches!(app.loop_mode, LoopMode::Off));
+}
+
+#[test]
+fn test_search_in_modes() {
+    let mut app = App::new_test();
+
+    // Radio Mode
+    app.mode = AppMode::Radio;
+    app.on_search_input('a');
+    assert_eq!(app.search_query, "a");
+    // Check if selection reset
+    assert_eq!(app.radio_state.selected(), Some(0));
+
+    app.on_search_backspace();
+    assert_eq!(app.search_query, "");
+    assert_eq!(app.radio_state.selected(), Some(0));
+
+    app.on_search_input('b');
+    app.cancel_search();
+    assert_eq!(app.search_query, "");
+    assert!(!app.is_searching);
+    assert_eq!(app.radio_state.selected(), Some(0));
+
+    // Favorites Mode
+    app.mode = AppMode::Favorites;
+    app.on_search_input('a');
+    assert_eq!(app.search_query, "a");
+    assert_eq!(app.favorites_state.selected(), Some(0));
+
+    app.on_search_backspace();
+    assert_eq!(app.search_query, "");
+    assert_eq!(app.favorites_state.selected(), Some(0));
+
+    app.on_search_input('b');
+    app.cancel_search();
+    assert_eq!(app.search_query, "");
+    assert!(!app.is_searching);
+    assert_eq!(app.favorites_state.selected(), Some(0));
+}
+
+#[test]
+fn test_radio_indexing() {
+    let mut app = App::new_test();
+    let station = RadioStation {
+        name: "Test".to_string(),
+        url: "http://test.com".to_string(),
+        description: None,
+        homepage: None,
+        tags: None,
+        last_playing: None,
+    };
+    let group1 = RadioGroup {
+        title: "Group1".to_string(),
+        stations: vec![station.clone()],
+        is_expanded: false,
+    };
+    let group2 = RadioGroup {
+        title: "Group2".to_string(),
+        stations: vec![station.clone()],
+        is_expanded: true,
+    };
+    app.radio_groups.push(group1);
+    app.radio_groups.push(group2);
+
+    // Index 0: Group 1 Header
+    assert!(app.get_radio_station_at_index(0).is_none());
+
+    // Index 1: Group 2 Header
+    assert!(app.get_radio_station_at_index(1).is_none());
+
+    // Index 2: Group 2 Station 1
+    let s = app.get_radio_station_at_index(2);
+    assert!(s.is_some());
+    assert_eq!(s.unwrap().name, "Test");
+
+    // Index 3: Out of bounds
+    assert!(app.get_radio_station_at_index(3).is_none());
 }

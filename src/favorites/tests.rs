@@ -74,3 +74,26 @@ fn test_favorites_load_empty() {
         assert!(loaded.stations.is_empty());
     });
 }
+
+#[test]
+fn test_favorites_load_corrupted() {
+    let dir = tempdir().unwrap();
+    let config_path = dir.path().to_path_buf();
+
+    with_xdg_config_home(&config_path, || {
+        let cohors_dir = config_path.join("cohors");
+        fs::create_dir_all(&cohors_dir).unwrap();
+        let favorites_path = cohors_dir.join("favorites.json");
+        fs::write(&favorites_path, "{ invalid json").unwrap();
+
+        let loaded = Favorites::load();
+        assert!(loaded.files.is_empty());
+        assert!(loaded.stations.is_empty());
+
+        // Check backup
+        let backup_path = favorites_path.with_extension("json.bak");
+        assert!(backup_path.exists());
+        let content = fs::read_to_string(backup_path).unwrap();
+        assert_eq!(content, "{ invalid json");
+    });
+}

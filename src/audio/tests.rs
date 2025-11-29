@@ -1,5 +1,5 @@
 use super::*;
-use rodio::source::{SineWave, Source};
+use rodio::source::{SineWave, Source, SeekError};
 use std::sync::{Arc, Mutex};
 
 #[test]
@@ -37,6 +37,50 @@ fn test_audio_analyzer() {
     let _total_energy: u64 = data.iter().map(|(_, v)| *v).sum();
     // Note: FFT might fail or produce 0 if scaling is weird, but usually it works.
     // We just assert it runs without panic.
+}
+
+#[test]
+fn test_audio_analyzer_seek() {
+    let source = SineWave::new(440.0);
+    let spectrum_data = Arc::new(Mutex::new(vec![]));
+
+    let mut analyzer = AudioAnalyzer {
+        input: source,
+        buffer: Vec::new(),
+        spectrum_data,
+        sample_rate: 44100,
+    };
+
+    // SineWave supports seeking (it's infinite)
+    assert!(analyzer.try_seek(Duration::from_secs(1)).is_ok());
+}
+
+struct NoSeekSource;
+impl Iterator for NoSeekSource {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> { Some(0.0) }
+}
+impl Source for NoSeekSource {
+    fn current_frame_len(&self) -> Option<usize> { None }
+    fn channels(&self) -> u16 { 1 }
+    fn sample_rate(&self) -> u32 { 44100 }
+    fn total_duration(&self) -> Option<Duration> { None }
+    fn try_seek(&mut self, _: Duration) -> Result<(), rodio::source::SeekError> {
+        Err(SeekError::NotSupported { underlying_source: "NoSeekSource" })
+    }
+}
+
+#[test]
+fn test_audio_analyzer_seek_fail() {
+    let source = NoSeekSource;
+    let spectrum_data = Arc::new(Mutex::new(vec![]));
+    let mut analyzer = AudioAnalyzer {
+        input: source,
+        buffer: Vec::new(),
+        spectrum_data,
+        sample_rate: 44100,
+    };
+    assert!(analyzer.try_seek(Duration::from_secs(1)).is_err());
 }
 
 #[test]

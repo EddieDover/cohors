@@ -15,11 +15,23 @@ impl Favorites {
         let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
         let favorites_path = config_dir.join("cohors").join("favorites.json");
 
-        if favorites_path.exists()
-            && let Ok(content) = fs::read_to_string(favorites_path)
-            && let Ok(favorites) = serde_json::from_str(&content)
-        {
-            return favorites;
+        if favorites_path.exists() {
+            match fs::read_to_string(&favorites_path) {
+                Ok(content) => match serde_json::from_str(&content) {
+                    Ok(favorites) => return favorites,
+                    Err(e) => {
+                        eprintln!("Failed to parse favorites: {}", e);
+                        // Backup corrupted file
+                        let backup_path = favorites_path.with_extension("json.bak");
+                        if let Err(e) = fs::copy(&favorites_path, &backup_path) {
+                            eprintln!("Failed to backup corrupted favorites: {}", e);
+                        } else {
+                            eprintln!("Backed up corrupted favorites to {:?}", backup_path);
+                        }
+                    }
+                },
+                Err(e) => eprintln!("Failed to read favorites file: {}", e),
+            }
         }
 
         Favorites::default()
@@ -63,7 +75,6 @@ impl Favorites {
         self.stations.iter().any(|s| s.url == station.url)
     }
 }
-
 
 #[cfg(test)]
 mod tests;

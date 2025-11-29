@@ -6,6 +6,11 @@ A TUI music player written in Rust.
 - File system navigation and playback (MP3, WAV, OGG, FLAC)
 - Audio visualization (Spectrum Analyzer)
 - Internet Radio support (Configurable via radio.json)
+- Supports MPRIS (media playback controls on a system-wide level)
+
+## Disclaimer
+
+I'm happy to hear your feedback and feature requests! I'm also very open to PRs that add or enhance functionality. But, please, know that I created this application for myself and my friends, our feedback and needs come before any others.
 
 ## Key Bindings
 

@@ -306,3 +306,44 @@ fn test_ui_draw_current_track_highlight() {
 
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 }
+
+#[test]
+fn test_ui_draw_visualizer_no_bars() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    
+    // Clear spectrum data
+    if let Ok(mut data) = app.spectrum_data.lock() {
+        data.clear();
+    }
+
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
+
+#[test]
+fn test_ui_draw_favorite_file() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    
+    let file = PathBuf::from("fav.mp3");
+    app.items = vec![file.clone()];
+    app.update_search_results();
+    app.favorites.files.push(file.clone());
+    
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
+
+#[test]
+fn test_ui_draw_invalid_selection() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    
+    app.items = vec![PathBuf::from("a")];
+    app.update_search_results();
+    app.state.select(Some(10)); // Invalid index
+
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
