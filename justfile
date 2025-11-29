@@ -1,5 +1,5 @@
 # Common tarpaulin flags
-tarpaulin_base := "tarpaulin --workspace --all-features --timeout 120 --exclude-files src/main.rs --ignore-tests --target-dir $PWD/target-cov --skip-clean"
+tarpaulin_base := "tarpaulin --workspace --all-features --timeout 120 --exclude-files src/main.rs src/tests.rs src/*/tests.rs --ignore-tests --target-dir $PWD/target-cov --skip-clean"
 
 # Full coverage report with HTML and XML output
 coverage:
