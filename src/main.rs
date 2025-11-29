@@ -32,6 +32,10 @@ pub struct Args {
     #[arg(short = 's', long = "station-file")]
     station_file: Option<String>,
 
+    /// Invalidate the station cache
+    #[arg(long = "invalidate-cache")]
+    invalidate_cache: bool,
+
     /// Path to a file or directory to play
     #[arg(num_args(0..))]
     path: Vec<String>,
@@ -112,7 +116,10 @@ fn main() -> Result<()> {
     println!("Loading radio stations...");
     let rt = tokio::runtime::Runtime::new()?;
     let station_file = args.station_file.map(PathBuf::from);
-    match rt.block_on(radio::fetch_all_stations(station_file)) {
+    match rt.block_on(radio::fetch_all_stations(
+        station_file,
+        args.invalidate_cache,
+    )) {
         Ok(groups) => {
             println!("Loaded {} groups", groups.len());
             app.radio_groups = groups;
@@ -170,6 +177,7 @@ mod tests {
             volume: Some(50),
             radio: false,
             station_file: None,
+            invalidate_cache: false,
             path: vec![],
         };
         apply_args(&mut app, args);
@@ -183,6 +191,7 @@ mod tests {
             volume: None,
             radio: true,
             station_file: None,
+            invalidate_cache: false,
             path: vec![],
         };
         apply_args(&mut app, args);
@@ -203,6 +212,7 @@ mod tests {
             volume: None,
             radio: false,
             station_file: None,
+            invalidate_cache: false,
             path: vec![file_path.to_string_lossy().to_string()],
         };
         apply_args(&mut app, args);
@@ -238,6 +248,7 @@ mod tests {
             volume: None,
             radio: false,
             station_file: None,
+            invalidate_cache: false,
             path: parts,
         };
 
@@ -265,6 +276,7 @@ mod tests {
             volume: None,
             radio: false,
             station_file: None,
+            invalidate_cache: false,
             path: vec![dir.path().to_string_lossy().to_string()],
         };
         apply_args(&mut app, args);
