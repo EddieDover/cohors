@@ -163,15 +163,23 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 .filtered_items
                 .iter()
                 .map(|path| {
-                    let mut name = path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string();
+                    let mut name = if path.ends_with("..") {
+                        "..".to_string()
+                    } else {
+                        path.file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string()
+                    };
+
                     if app.favorites.is_favorite_file(path) {
                         name.push_str(" ★");
                     }
+
                     let style = if path.is_dir() {
+                        if name != ".." {
+                            name.push('/');
+                        }
                         Style::default().fg(Color::Blue)
                     } else if Some(path) == app.current_track.as_ref() {
                         Style::default()
