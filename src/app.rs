@@ -60,7 +60,7 @@ pub struct App {
     // HTTP Client
     pub http_client: reqwest::blocking::Client,
     // UI State
-    pub show_about: bool,
+    pub show_help: bool,
     pub show_hidden: bool,
     // Looping Mode
     pub loop_mode: LoopMode,
@@ -118,7 +118,7 @@ impl App {
             ])),
             source_receiver: None,
             http_client: reqwest::blocking::Client::new(),
-            show_about: false,
+            show_help: false,
             show_hidden: false,
             loop_mode: LoopMode::Off,
             is_searching: false,
@@ -164,7 +164,7 @@ impl App {
             ])),
             source_receiver: None,
             http_client: reqwest::blocking::Client::new(),
-            show_about: false,
+            show_help: false,
             show_hidden: false,
             loop_mode: LoopMode::Off,
             is_searching: false,
@@ -881,16 +881,16 @@ pub fn run_app<B: Backend, E: EventSource>(
                         KeyCode::Char(c) => app.on_search_input(c),
                         _ => {}
                     }
-                } else if app.show_about {
+                } else if app.show_help {
                     match key.code {
-                        KeyCode::Char('?') | KeyCode::Esc => app.show_about = false,
+                        KeyCode::Char('?') | KeyCode::Esc => app.show_help = false,
                         KeyCode::Char('q') => return Ok(()),
                         _ => {}
                     }
                 } else {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Char('?') => app.show_about = true,
+                        KeyCode::Char('?') => app.show_help = true,
                         KeyCode::Char('/') => {
                             app.is_searching = true;
                             app.search_query.clear();
@@ -934,7 +934,6 @@ pub fn run_app<B: Backend, E: EventSource>(
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests;

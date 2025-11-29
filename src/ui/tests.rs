@@ -44,7 +44,7 @@ fn test_ui_draw_about() {
     let backend = TestBackend::new(100, 50);
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app = App::new_test();
-    app.show_about = true;
+    app.show_help = true;
 
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 }

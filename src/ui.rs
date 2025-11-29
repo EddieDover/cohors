@@ -3,7 +3,10 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{BarChart, Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph},
+    widgets::{
+        BarChart, Block, Borders, Cell, Clear, Gauge, List, ListItem, ListState, Paragraph, Row,
+        Table,
+    },
 };
 use std::time::Duration;
 
@@ -435,17 +438,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             Paragraph::new(search_text).style(Style::default().fg(Color::Black).bg(Color::Blue));
         f.render_widget(search_paragraph, help_layout[0]);
     } else {
-        let help_text = match app.mode {
-            AppMode::FileSystem => {
-                " q:Quit | TAB:Switch Mode | /:Search | ?:About | h:Hidden | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track | l:Loop | f:Fav "
-            }
-            AppMode::Radio => {
-                " q:Quit | TAB:Switch Mode | /:Search | ?:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol | f:Fav "
-            }
-            AppMode::Favorites => {
-                " q:Quit | TAB:Switch Mode | ?:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol | f:Unfav "
-            }
-        };
+        let help_text = " ?:Help | q:Quit | TAB:Switch Mode ";
         let help_paragraph =
             Paragraph::new(help_text).style(Style::default().fg(Color::Black).bg(Color::White));
         f.render_widget(help_paragraph, help_layout[0]);
@@ -457,31 +450,95 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .alignment(ratatui::layout::Alignment::Right);
     f.render_widget(version_paragraph, help_layout[1]);
 
-    if app.show_about {
-        draw_about_modal(f);
+    if app.show_help {
+        draw_help_modal(f);
     }
 }
 
-fn draw_about_modal(f: &mut Frame) {
-    let area = centered_rect(60, 25, f.area());
-    let block = Block::default().title("About").borders(Borders::ALL);
-    let text = [
-        "",
-        "Cohors - A Terminal Music Player",
-        "",
-        "Repo: https://github.com/EddieDover/cohors",
-        "Author: Eddie Dover <ed@eddiedover.dev>",
-        "",
-        "Press '?' or 'Esc' to close",
-    ]
-    .join("\n");
+fn draw_help_modal(f: &mut Frame) {
+    let area = centered_rect(60, 60, f.area());
+    let block = Block::default().title("Help").borders(Borders::ALL);
 
-    let paragraph = Paragraph::new(text)
-        .block(block)
-        .alignment(ratatui::layout::Alignment::Center);
+    let rows = vec![
+        // General
+        Row::new(vec![Cell::from("")]),
+        Row::new(vec![Cell::from("General"), Cell::from("")]).style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Yellow),
+        ),
+        Row::new(vec![Cell::from("?"), Cell::from("Toggle Help")]),
+        Row::new(vec![Cell::from("q"), Cell::from("Quit")]),
+        Row::new(vec![
+            Cell::from("TAB"),
+            Cell::from("Switch Mode (Files/Radio/Favs)"),
+        ]),
+        Row::new(vec![Cell::from("/"), Cell::from("Search")]),
+        Row::new(vec![Cell::from("Space"), Cell::from("Play/Pause")]),
+        Row::new(vec![Cell::from("+/-"), Cell::from("Volume Up/Down")]),
+        // Navigation
+        Row::new(vec![Cell::from("")]),
+        Row::new(vec![Cell::from("Navigation"), Cell::from("")]).style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Yellow),
+        ),
+        Row::new(vec![Cell::from("j / ↓"), Cell::from("Down")]),
+        Row::new(vec![Cell::from("k / ↑"), Cell::from("Up")]),
+        Row::new(vec![
+            Cell::from("Enter"),
+            Cell::from("Play / Enter Directory"),
+        ]),
+        Row::new(vec![Cell::from("Backspace"), Cell::from("Go Up Directory")]),
+        Row::new(vec![
+            Cell::from("← / →"),
+            Cell::from("Previous / Next Track"),
+        ]),
+        // Files
+        Row::new(vec![Cell::from("")]),
+        Row::new(vec![Cell::from("Files"), Cell::from("")]).style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Yellow),
+        ),
+        Row::new(vec![Cell::from("h"), Cell::from("Toggle Hidden Files")]),
+        Row::new(vec![Cell::from("l"), Cell::from("Toggle Loop Mode")]),
+        Row::new(vec![Cell::from("f"), Cell::from("Toggle Favorite")]),
+        // About
+        Row::new(vec![Cell::from("")]),
+        Row::new(vec![Cell::from("About"), Cell::from("")]).style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Yellow),
+        ),
+        Row::new(vec![
+            Cell::from("Version"),
+            Cell::from(env!("CARGO_PKG_VERSION")),
+        ]),
+        Row::new(vec![
+            Cell::from("Author"),
+            Cell::from(env!("CARGO_PKG_AUTHORS")),
+        ]),
+        Row::new(vec![
+            Cell::from("Repo"),
+            Cell::from(env!("CARGO_PKG_REPOSITORY")),
+        ]),
+    ];
+
+    let table = Table::new(
+        rows,
+        [Constraint::Percentage(30), Constraint::Percentage(70)],
+    )
+    .block(block)
+    .header(
+        Row::new(vec!["Key", "Action"])
+            .style(Style::default().fg(Color::Yellow))
+            .bottom_margin(1),
+    )
+    .column_spacing(1);
 
     f.render_widget(Clear, area); // Clear background
-    f.render_widget(paragraph, area);
+    f.render_widget(table, area);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
@@ -503,7 +560,6 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         ])
         .split(popup_layout[1])[1]
 }
-
 
 #[cfg(test)]
 mod tests;
