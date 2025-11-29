@@ -1,6 +1,6 @@
 # Maintainer: Eddie Dover <ed@eddiedover.dev>
 pkgname=cohors
-pkgver=0.5.3
+pkgver=0.6.0
 pkgrel=1
 pkgdesc="A terminal based music player and internet radio streaming application"
 arch=('x86_64')

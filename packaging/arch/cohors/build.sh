@@ -1,1 +1,0 @@
-updpkgsums && makepkg -si
