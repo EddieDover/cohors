@@ -81,6 +81,58 @@ fn test_map_station_all_fields() {
     assert_eq!(station.last_playing.as_deref(), Some("Last"));
 }
 
+#[test]
+fn test_load_config_home() {
+    let temp_home = tempdir().unwrap();
+    let config_dir = temp_home.path().join(".config/cohors");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    let config_path = config_dir.join("stations.config.json");
+
+    let config_content = r#"{ "sources": [] }"#;
+    std::fs::write(&config_path, config_content).unwrap();
+
+    let config = load_config(None, Some(temp_home.path().to_path_buf()), None).unwrap();
+    assert!(config.sources.is_empty());
+}
+
+#[tokio::test]
+async fn test_fetch_all_stations() {
+    let temp_dir = tempdir().unwrap();
+    let config_path = temp_dir.path().join("stations.config.json");
+
+    // Mock server
+    let mut server = mockito::Server::new_async().await;
+    let _m = server
+        .mock("GET", "/stations.json")
+        .with_status(200)
+        .with_body(r#"[{"name": "Station 1", "url": "http://1.com"}]"#)
+        .create_async()
+        .await;
+
+    let config_content = format!(
+        r#"{{
+        "sources": [
+            {{
+                "title": "Test Source",
+                "json_url": "{}/stations.json",
+                "mapping": {{
+                    "station_name": "name",
+                    "station_url": "url"
+                }}
+            }}
+        ]
+    }}"#,
+        server.url()
+    );
+
+    std::fs::write(&config_path, config_content).unwrap();
+
+    let groups = fetch_all_stations(Some(config_path), true).await.unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].title, "Test Source");
+    assert_eq!(groups[0].stations.len(), 1);
+}
+
 #[tokio::test]
 async fn test_fetch_stations_caching() {
     let mut server = mockito::Server::new_async().await;

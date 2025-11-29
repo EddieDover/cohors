@@ -1,5 +1,6 @@
 use crate::audio::AudioAnalyzer;
 use crate::favorites::Favorites;
+use crate::mpris::MprisCommand;
 use crate::radio::{RadioGroup, RadioStation};
 use crate::ui;
 use crossterm::event::{self, Event, KeyCode};
@@ -9,6 +10,7 @@ use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::{
     fs, io,
     path::PathBuf,
+    sync::mpsc::Receiver,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -69,6 +71,8 @@ pub struct App {
     pub search_query: String,
     pub filtered_items: Vec<PathBuf>,
     pub filtered_radio_groups: Vec<RadioGroup>,
+    pub mpris_state: Option<std::sync::Arc<std::sync::Mutex<crate::mpris::MprisState>>>,
+    pub mpris_notifier: Option<tokio::sync::mpsc::UnboundedSender<()>>,
 }
 
 impl App {
@@ -125,6 +129,8 @@ impl App {
             search_query: String::new(),
             filtered_items: Vec::new(),
             filtered_radio_groups: Vec::new(),
+            mpris_state: None,
+            mpris_notifier: None,
         };
         app.load_directory();
         app
@@ -132,7 +138,8 @@ impl App {
 
     #[cfg(test)]
     pub fn new_test() -> App {
-        let (sink, _queue) = Sink::new_idle();
+        let (sink, queue) = Sink::new_idle();
+        std::mem::forget(queue);
         App {
             mode: AppMode::FileSystem,
             favorites: Favorites::default(),
@@ -171,6 +178,8 @@ impl App {
             search_query: String::new(),
             filtered_items: Vec::new(),
             filtered_radio_groups: Vec::new(),
+            mpris_state: None,
+            mpris_notifier: None,
         }
     }
 
@@ -568,6 +577,135 @@ impl App {
         }
     }
 
+    pub fn seek_to(&mut self, position: Duration) {
+        if let Some(sink) = &self.sink {
+            match sink.try_seek(position) {
+                Ok(_) => {
+                    self.playback_elapsed = position;
+                    if !self.is_paused {
+                        self.playback_start = Some(Instant::now());
+                    }
+                    self.update_mpris();
+                }
+                Err(e) => {
+                    // Fallback for sources that don't support seeking (like some FLAC decoders)
+                    if !self.seek_fallback(position) {
+                        self.last_error = Some(format!("Seek error: {}", e));
+                    }
+                }
+            }
+        }
+    }
+
+    fn seek_fallback(&mut self, position: Duration) -> bool {
+        if let Some(path) = &self.current_track
+            && path.exists()
+            && let Ok(file) = fs::File::open(path)
+        {
+            let reader = io::BufReader::new(file);
+            if let Ok(decoder) = Decoder::new(reader) {
+                let source = decoder.convert_samples::<f32>();
+                let sample_rate = source.sample_rate();
+
+                // Skip to position
+                let source = source.skip_duration(position);
+
+                let analyzer = AudioAnalyzer {
+                    input: source,
+                    buffer: Vec::with_capacity(2048),
+                    spectrum_data: self.spectrum_data.clone(),
+                    sample_rate,
+                };
+
+                if let Some(sink) = &self.sink {
+                    sink.stop();
+                    sink.append(analyzer);
+
+                    if self.is_paused {
+                        sink.pause();
+                        self.playback_start = None;
+                    } else {
+                        sink.play();
+                        self.playback_start = Some(Instant::now());
+                    }
+                }
+
+                self.playback_elapsed = position;
+                self.update_mpris();
+                self.last_error = None;
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn handle_mpris_command(&mut self, cmd: MprisCommand) {
+        match cmd {
+            MprisCommand::Play => {
+                if self.is_paused {
+                    self.toggle_pause();
+                }
+            }
+            MprisCommand::Pause => {
+                if !self.is_paused {
+                    self.toggle_pause();
+                }
+            }
+            MprisCommand::PlayPause => self.toggle_pause(),
+            MprisCommand::Stop => {
+                if !self.is_paused {
+                    self.toggle_pause();
+                }
+            }
+            MprisCommand::Next => self.next_track(),
+            MprisCommand::Previous => self.previous_track(),
+            MprisCommand::Volume(vol) => {
+                self.volume = vol as f32;
+                if let Some(sink) = &self.sink {
+                    sink.set_volume(self.volume);
+                }
+                self.update_mpris();
+            }
+            MprisCommand::Seek(offset_micros) => {
+                let current_pos = self.playback_elapsed
+                    + self
+                        .playback_start
+                        .map(|s| s.elapsed())
+                        .unwrap_or(Duration::from_secs(0));
+
+                let new_pos_micros = current_pos.as_micros() as i128 + offset_micros as i128;
+                let new_pos = if new_pos_micros < 0 {
+                    Duration::from_secs(0)
+                } else {
+                    let pos = Duration::from_micros(new_pos_micros as u64);
+                    if let Some(duration) = self.track_duration {
+                        if pos > duration { duration } else { pos }
+                    } else {
+                        pos
+                    }
+                };
+                self.seek_to(new_pos);
+            }
+            MprisCommand::SetPosition(_track_id, position_micros) => {
+                let mut pos = Duration::from_micros(position_micros as u64);
+                if let Some(duration) = self.track_duration
+                    && pos > duration
+                {
+                    pos = duration;
+                }
+                self.seek_to(pos);
+            }
+            MprisCommand::LoopStatus(status) => {
+                self.loop_mode = match status {
+                    mpris_server::LoopStatus::None => LoopMode::Off,
+                    mpris_server::LoopStatus::Track => LoopMode::Track,
+                    mpris_server::LoopStatus::Playlist => LoopMode::All,
+                };
+                self.update_mpris();
+            }
+        }
+    }
+
     pub fn on_tick(&mut self) {
         let source_result = self
             .source_receiver
@@ -608,6 +746,57 @@ impl App {
                 LoopMode::Off => {}
             }
         }
+        self.update_mpris();
+    }
+
+    pub fn update_mpris(&self) {
+        if let Some(mpris_state) = &self.mpris_state {
+            if let Ok(mut state) = mpris_state.lock() {
+                state.playback_status = if self.current_track.is_some() {
+                    if let Some(sink) = &self.sink {
+                        if sink.empty() {
+                            mpris_server::PlaybackStatus::Stopped
+                        } else if self.is_paused {
+                            mpris_server::PlaybackStatus::Paused
+                        } else {
+                            mpris_server::PlaybackStatus::Playing
+                        }
+                    } else {
+                        mpris_server::PlaybackStatus::Stopped
+                    }
+                } else {
+                    mpris_server::PlaybackStatus::Stopped
+                };
+
+                state.volume = self.volume as f64;
+                state.loop_status = match self.loop_mode {
+                    LoopMode::Off => mpris_server::LoopStatus::None,
+                    LoopMode::Track => mpris_server::LoopStatus::Track,
+                    LoopMode::All => mpris_server::LoopStatus::Playlist,
+                };
+                state.position = self.playback_elapsed;
+                state.playback_start = if self.is_paused {
+                    None
+                } else {
+                    self.playback_start
+                };
+
+                if let Some(path) = &self.current_track {
+                    let title = path
+                        .file_name()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "Unknown".to_string());
+                    state.title = title;
+                    state.duration = self.track_duration;
+                } else {
+                    state.title = String::new();
+                    state.duration = None;
+                }
+            }
+            if let Some(notifier) = &self.mpris_notifier {
+                notifier.send(()).ok();
+            }
+        }
     }
 
     pub fn play_file(&mut self, path: PathBuf) {
@@ -643,6 +832,7 @@ impl App {
         } else {
             self.last_error = Some("Audio not available".to_string());
         }
+        self.update_mpris();
     }
 
     pub fn toggle_pause(&mut self) {
@@ -660,6 +850,7 @@ impl App {
                 }
             }
         }
+        self.update_mpris();
     }
 
     pub fn change_volume(&mut self, delta: f32) {
@@ -667,6 +858,7 @@ impl App {
         if let Some(sink) = &self.sink {
             sink.set_volume(self.volume);
         }
+        self.update_mpris();
     }
 
     pub fn toggle_loop(&mut self) {
@@ -865,9 +1057,16 @@ pub fn run_app<B: Backend, E: EventSource>(
     terminal: &mut Terminal<B>,
     app: &mut App,
     events: &mut E,
+    mpris_rx: &Receiver<MprisCommand>,
 ) -> io::Result<()> {
     loop {
         app.on_tick();
+
+        // Handle MPRIS commands
+        while let Ok(cmd) = mpris_rx.try_recv() {
+            app.handle_mpris_command(cmd);
+        }
+
         terminal.draw(|f| ui::draw(f, app))?;
 
         if events.poll(Duration::from_millis(50))? {
@@ -937,3 +1136,5 @@ pub fn run_app<B: Backend, E: EventSource>(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_mpris_logic;
