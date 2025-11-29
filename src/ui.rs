@@ -163,7 +163,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 .items
                 .iter()
                 .map(|path| {
-                    let name = path.file_name().unwrap_or_default().to_string_lossy();
+                    let mut name = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    if app.favorites.is_favorite_file(path) {
+                        name.push_str(" ★");
+                    }
                     let style = if path.is_dir() {
                         Style::default().fg(Color::Blue)
                     } else if Some(path) == app.current_track.as_ref() {
@@ -280,7 +287,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                         }
 
                         if current_idx >= start {
-                            let name = format!("  {}", station.name);
+                            let mut name = format!("  {}", station.name);
+                            if app.favorites.is_favorite_station(station) {
+                                name.push_str(" ★");
+                            }
                             items.push(ListItem::new(name));
                         }
 
@@ -341,6 +351,63 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 .wrap(ratatui::widgets::Wrap { trim: true });
             f.render_widget(info_paragraph, top_chunks[1]);
         }
+        AppMode::Favorites => {
+            let top_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+                .split(chunks[0]);
+
+            let mut items = Vec::new();
+            // Files
+            for path in &app.favorites.files {
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                let style = if path.is_dir() {
+                    Style::default().fg(Color::Blue)
+                } else {
+                    Style::default()
+                };
+                items.push(ListItem::new(format!("{} ★", name)).style(style));
+            }
+            // Stations
+            for station in &app.favorites.stations {
+                let name = format!("{} ★", station.name);
+                items.push(ListItem::new(name));
+            }
+
+            let list = List::new(items)
+                .block(Block::default().borders(Borders::ALL).title("Favorites"))
+                .highlight_style(
+                    Style::default()
+                        .add_modifier(Modifier::BOLD)
+                        .fg(Color::Yellow),
+                )
+                .highlight_symbol(">> ");
+
+            f.render_stateful_widget(list, top_chunks[0], &mut app.favorites_state);
+
+            // Info
+            let info_text = if let Some(i) = app.favorites_state.selected() {
+                if i < app.favorites.files.len() {
+                    if let Some(path) = app.favorites.files.get(i) {
+                        format!("File: {}", path.display())
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    let station_idx = i - app.favorites.files.len();
+                    if let Some(station) = app.favorites.stations.get(station_idx) {
+                        format!("Station: {}\nURL: {}", station.name, station.url)
+                    } else {
+                        String::new()
+                    }
+                }
+            } else {
+                "No selection".to_string()
+            };
+            let info_block = Block::default().borders(Borders::ALL).title("Info");
+            let info_paragraph = Paragraph::new(info_text).block(info_block);
+            f.render_widget(info_paragraph, top_chunks[1]);
+        }
     }
 
     // Help Bar
@@ -351,10 +418,13 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     let help_text = match app.mode {
         AppMode::FileSystem => {
-            " q:Quit | TAB:Switch Mode | ?:About | h:Hidden | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track | l:Loop "
+            " q:Quit | TAB:Switch Mode | ?:About | h:Hidden | j/k/↓/↑:Nav | Enter:Play | Bksp:Up | Space:Pause | +/-:Vol | ←/→:Track | l:Loop | f:Fav "
         }
         AppMode::Radio => {
-            " q:Quit | TAB:Switch Mode | ?:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol "
+            " q:Quit | TAB:Switch Mode | ?:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol | f:Fav "
+        }
+        AppMode::Favorites => {
+            " q:Quit | TAB:Switch Mode | ?:About | j/k/↓/↑:Nav | Enter:Play | Space:Pause | +/-:Vol | f:Unfav "
         }
     };
     let help_paragraph =
