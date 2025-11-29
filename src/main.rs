@@ -1,5 +1,6 @@
 mod app;
 mod audio;
+mod favorites;
 mod radio;
 mod ui;
 

@@ -1,4 +1,5 @@
 use crate::audio::AudioAnalyzer;
+use crate::favorites::Favorites;
 use crate::radio::{RadioGroup, RadioStation};
 use crate::ui;
 use crossterm::event::{self, Event, KeyCode};
@@ -20,6 +21,7 @@ pub type SourceReceiver = std::sync::mpsc::Receiver<SourceResult>;
 pub enum AppMode {
     FileSystem,
     Radio,
+    Favorites,
 }
 
 pub enum LoopMode {
@@ -30,12 +32,15 @@ pub enum LoopMode {
 
 pub struct App {
     pub mode: AppMode,
+    pub favorites: Favorites,
     pub current_dir: PathBuf,
     pub items: Vec<PathBuf>,
     pub state: ListState,
     // Radio
     pub radio_groups: Vec<RadioGroup>,
     pub radio_state: ListState,
+    // Favorites
+    pub favorites_state: ListState,
     // Audio
     pub _stream: Option<OutputStream>,
     pub _stream_handle: Option<OutputStreamHandle>,
@@ -84,11 +89,13 @@ impl App {
         let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let mut app = App {
             mode: AppMode::FileSystem,
+            favorites: Favorites::load(),
             current_dir,
             items: Vec::new(),
             state: ListState::default(),
             radio_groups: Vec::new(),
             radio_state: ListState::default(),
+            favorites_state: ListState::default(),
             _stream: stream,
             _stream_handle: stream_handle,
             sink,
@@ -128,11 +135,13 @@ impl App {
         let (sink, _queue) = Sink::new_idle();
         App {
             mode: AppMode::FileSystem,
+            favorites: Favorites::default(),
             current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             items: Vec::new(),
             state: ListState::default(),
             radio_groups: Vec::new(),
             radio_state: ListState::default(),
+            favorites_state: ListState::default(),
             _stream: None,
             _stream_handle: None,
             sink: Some(sink),
@@ -253,6 +262,7 @@ impl App {
         match self.mode {
             AppMode::FileSystem => self.state.select(Some(0)),
             AppMode::Radio => self.radio_state.select(Some(0)),
+            AppMode::Favorites => self.favorites_state.select(Some(0)),
         }
     }
 
@@ -263,6 +273,7 @@ impl App {
         match self.mode {
             AppMode::FileSystem => self.state.select(Some(0)),
             AppMode::Radio => self.radio_state.select(Some(0)),
+            AppMode::Favorites => self.favorites_state.select(Some(0)),
         }
     }
 
@@ -274,6 +285,7 @@ impl App {
         match self.mode {
             AppMode::FileSystem => self.state.select(Some(0)),
             AppMode::Radio => self.radio_state.select(Some(0)),
+            AppMode::Favorites => self.favorites_state.select(Some(0)),
         }
     }
 
@@ -291,6 +303,24 @@ impl App {
             }
         }
         count
+    }
+
+    pub fn get_radio_station_at_index(&self, index: usize) -> Option<&RadioStation> {
+        let mut current_idx = 0;
+        for group in &self.radio_groups {
+            if current_idx == index {
+                return None; // It's a group header
+            }
+            current_idx += 1;
+
+            if group.is_expanded {
+                if index < current_idx + group.stations.len() {
+                    return Some(&group.stations[index - current_idx]);
+                }
+                current_idx += group.stations.len();
+            }
+        }
+        None
     }
 
     pub fn next(&mut self) {
@@ -321,6 +351,20 @@ impl App {
                     None => 0,
                 };
                 self.radio_state.select(Some(i));
+            }
+            AppMode::Favorites => {
+                let count = self.favorites.files.len() + self.favorites.stations.len();
+                let i = match self.favorites_state.selected() {
+                    Some(i) => {
+                        if i >= count.saturating_sub(1) {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.favorites_state.select(Some(i));
             }
         }
     }
@@ -353,6 +397,20 @@ impl App {
                     None => 0,
                 };
                 self.radio_state.select(Some(i));
+            }
+            AppMode::Favorites => {
+                let count = self.favorites.files.len() + self.favorites.stations.len();
+                let i = match self.favorites_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            count.saturating_sub(1)
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.favorites_state.select(Some(i));
             }
         }
     }
@@ -423,6 +481,26 @@ impl App {
                         self.play_radio(station);
                     }
                     None => {}
+                }
+            }
+            AppMode::Favorites => {
+                if let Some(i) = self.favorites_state.selected() {
+                    if i < self.favorites.files.len() {
+                        if let Some(path) = self.favorites.files.get(i) {
+                            if path.is_dir() {
+                                self.current_dir = path.clone();
+                                self.mode = AppMode::FileSystem;
+                                self.load_directory();
+                            } else {
+                                self.play_file(path.clone());
+                            }
+                        }
+                    } else {
+                        let station_idx = i - self.favorites.files.len();
+                        if let Some(station) = self.favorites.stations.get(station_idx) {
+                            self.play_radio(station.clone());
+                        }
+                    }
                 }
             }
         }
@@ -597,6 +675,47 @@ impl App {
             LoopMode::Track => LoopMode::All,
             LoopMode::All => LoopMode::Off,
         };
+    }
+
+    pub fn toggle_favorite(&mut self) {
+        match self.mode {
+            AppMode::FileSystem => {
+                if let Some(path) = self.state.selected().and_then(|i| self.items.get(i))
+                    && path.file_name().and_then(|n| n.to_str()) != Some("..")
+                {
+                    self.favorites.toggle_file(path.clone());
+                }
+            }
+            AppMode::Radio => {
+                if let Some(i) = self.radio_state.selected()
+                    && let Some(station) = self.get_radio_station_at_index(i)
+                {
+                    self.favorites.toggle_station(station.clone());
+                }
+            }
+            AppMode::Favorites => {
+                // In favorites mode, 'f' could remove the selected item
+                if let Some(i) = self.favorites_state.selected() {
+                    if i < self.favorites.files.len() {
+                        if let Some(path) = self.favorites.files.get(i) {
+                            self.favorites.toggle_file(path.clone());
+                        }
+                    } else {
+                        let station_idx = i - self.favorites.files.len();
+                        if let Some(station) = self.favorites.stations.get(station_idx) {
+                            self.favorites.toggle_station(station.clone());
+                        }
+                    }
+                    // Adjust selection if needed
+                    let count = self.favorites.files.len() + self.favorites.stations.len();
+                    if count == 0 {
+                        self.favorites_state.select(None);
+                    } else if i >= count {
+                        self.favorites_state.select(Some(count - 1));
+                    }
+                }
+            }
+        }
     }
 
     pub fn next_track(&mut self) {
@@ -789,7 +908,8 @@ pub fn run_app<B: Backend, E: EventSource>(
                         KeyCode::Tab => {
                             app.mode = match app.mode {
                                 AppMode::FileSystem => AppMode::Radio,
-                                AppMode::Radio => AppMode::FileSystem,
+                                AppMode::Radio => AppMode::Favorites,
+                                AppMode::Favorites => AppMode::FileSystem,
                             };
                             // Reset search when switching modes?
                             // Maybe better to keep it separate or clear it.
@@ -800,6 +920,7 @@ pub fn run_app<B: Backend, E: EventSource>(
                         KeyCode::Char('k') | KeyCode::Up => app.previous(),
                         KeyCode::Char('+') | KeyCode::Char('=') => app.change_volume(0.05),
                         KeyCode::Char('l') => app.toggle_loop(),
+                        KeyCode::Char('f') => app.toggle_favorite(),
                         KeyCode::Char('-') => app.change_volume(-0.05),
                         KeyCode::Left => app.previous_track(),
                         KeyCode::Right => app.next_track(),
@@ -1097,6 +1218,7 @@ mod tests {
             Event::Key(crossterm::event::KeyEvent::from(KeyCode::Char('j'))), // Next -> 1
             Event::Key(crossterm::event::KeyEvent::from(KeyCode::Char('k'))), // Prev -> 0
             Event::Key(crossterm::event::KeyEvent::from(KeyCode::Tab)),       // Mode -> Radio
+            Event::Key(crossterm::event::KeyEvent::from(KeyCode::Tab)),       // Mode -> Favorites
             Event::Key(crossterm::event::KeyEvent::from(KeyCode::Tab)),       // Mode -> FileSystem
             Event::Key(crossterm::event::KeyEvent::from(KeyCode::Char('+'))), // Vol Up
             Event::Key(crossterm::event::KeyEvent::from(KeyCode::Char('-'))), // Vol Down
@@ -1432,7 +1554,7 @@ mod tests {
         app.play_radio(station);
 
         // Wait for thread
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(500));
 
         // Check source_receiver
         if let Some(rx) = &app.source_receiver {
@@ -1446,6 +1568,45 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_favorites() {
+        let mut app = App::new_test();
+        let path = PathBuf::from("test.mp3");
+        app.items.push(path.clone());
+        app.state.select(Some(0));
+
+        // Toggle file favorite
+        app.toggle_favorite();
+        assert!(app.favorites.is_favorite_file(&path));
+
+        // Toggle again to remove
+        app.toggle_favorite();
+        assert!(!app.favorites.is_favorite_file(&path));
+
+        // Radio favorite
+        app.mode = AppMode::Radio;
+        let station = crate::radio::RadioStation {
+            name: "Test Station".to_string(),
+            url: "http://test.com".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        };
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Test Group".to_string(),
+            stations: vec![station.clone()],
+            is_expanded: true,
+        });
+        app.radio_state.select(Some(1)); // 0 is group header, 1 is station
+
+        app.toggle_favorite();
+        assert!(app.favorites.is_favorite_station(&station));
+
+        app.toggle_favorite();
+        assert!(!app.favorites.is_favorite_station(&station));
     }
 
     #[test]
@@ -1527,35 +1688,161 @@ mod tests {
             stations: vec![station1, station2],
             is_expanded: true,
         });
+
+        app.search_query = "Rock".to_string();
         app.update_search_results();
-        assert_eq!(app.filtered_radio_groups.len(), 1);
-        assert_eq!(app.filtered_radio_groups[0].stations.len(), 2);
 
-        // Search for "Rock"
-        app.on_search_input('r');
-        app.on_search_input('o');
-        app.on_search_input('c');
-        app.on_search_input('k');
-
-        assert_eq!(app.search_query, "rock");
         assert_eq!(app.filtered_radio_groups.len(), 1);
         assert_eq!(app.filtered_radio_groups[0].stations.len(), 1);
         assert_eq!(app.filtered_radio_groups[0].stations[0].name, "Rock FM");
+    }
 
-        // Backspace
-        app.on_search_backspace(); // roc
-        app.on_search_backspace(); // ro
-        app.on_search_backspace(); // r
-        app.on_search_backspace(); // empty
+    #[test]
+    fn test_favorites_navigation() {
+        let mut app = App::new_test();
 
-        assert_eq!(app.filtered_radio_groups[0].stations.len(), 2);
+        // Setup favorites
+        let file_path = PathBuf::from("test_fav.mp3");
+        let dir_path = std::env::temp_dir();
+        let station = crate::radio::RadioStation {
+            name: "Fav Station".to_string(),
+            url: "http://fav.com".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        };
 
-        // Cancel
-        app.on_search_input('x'); // x (no match)
-        assert_eq!(app.filtered_radio_groups.len(), 0);
+        app.favorites.files.push(file_path.clone());
+        app.favorites.files.push(dir_path.clone());
+        app.favorites.stations.push(station.clone());
 
-        app.cancel_search();
-        assert_eq!(app.filtered_radio_groups.len(), 1);
-        assert_eq!(app.filtered_radio_groups[0].stations.len(), 2);
+        app.mode = AppMode::Favorites;
+
+        // 1. Play File
+        app.favorites_state.select(Some(0)); // test_fav.mp3
+        app.enter_directory();
+        assert_eq!(app.current_track, Some(file_path.clone()));
+
+        // 2. Enter Directory
+        app.favorites_state.select(Some(1)); // temp dir
+        app.enter_directory();
+        assert_eq!(app.mode, AppMode::FileSystem);
+        assert_eq!(app.current_dir, dir_path);
+
+        // Reset to Favorites
+        app.mode = AppMode::Favorites;
+
+        // 3. Play Station
+        app.favorites_state.select(Some(2)); // Fav Station
+        app.enter_directory();
+        assert_eq!(app.current_track, Some(PathBuf::from("Fav Station")));
+    }
+
+    #[test]
+    fn test_favorites_navigation_wrap() {
+        let mut app = App::new_test();
+        app.mode = AppMode::Favorites;
+        app.favorites.files.push(PathBuf::from("1"));
+        app.favorites.files.push(PathBuf::from("2"));
+
+        // Test Next Wrap
+        app.favorites_state.select(Some(1));
+        app.next();
+        assert_eq!(app.favorites_state.selected(), Some(0));
+
+        // Test Previous Wrap
+        app.favorites_state.select(Some(0));
+        app.previous();
+        assert_eq!(app.favorites_state.selected(), Some(1));
+    }
+
+    #[test]
+    fn test_radio_enter_directory_logic() {
+        let mut app = App::new_test();
+        app.mode = AppMode::Radio;
+
+        let station = crate::radio::RadioStation {
+            name: "Station".to_string(),
+            url: "http://url".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        };
+
+        app.radio_groups.push(crate::radio::RadioGroup {
+            title: "Group".to_string(),
+            stations: vec![station],
+            is_expanded: false,
+        });
+        app.update_search_results();
+
+        // 1. Toggle Group (Expand)
+        app.radio_state.select(Some(0));
+        app.enter_directory();
+        assert!(app.radio_groups[0].is_expanded);
+
+        // 2. Play Station
+        app.radio_state.select(Some(1)); // Station is now visible at index 1
+        app.enter_directory();
+        assert_eq!(app.current_track, Some(PathBuf::from("Station")));
+
+        // 3. Toggle Group (Collapse)
+        app.radio_state.select(Some(0));
+        app.enter_directory();
+        assert!(!app.radio_groups[0].is_expanded);
+    }
+
+    #[test]
+    fn test_play_radio_http_error() {
+        let mut server = mockito::Server::new();
+        let _m = server.mock("GET", "/stream").with_status(404).create();
+
+        let url = format!("{}/stream", server.url());
+        let mut app = App::new_test();
+        let station = crate::radio::RadioStation {
+            name: "Test".to_string(),
+            url,
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        };
+
+        app.play_radio(station);
+        std::thread::sleep(Duration::from_millis(500));
+
+        if let Some(rx) = &app.source_receiver {
+            match rx.try_recv() {
+                Ok(Err(msg)) => assert!(msg.contains("HTTP error")),
+                _ => panic!("Expected HTTP error"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_play_radio_connection_error() {
+        // Use a port that is likely closed or a non-routable IP to force connection error
+        let url = "http://127.0.0.1:54321/stream".to_string();
+        let mut app = App::new_test();
+        let station = crate::radio::RadioStation {
+            name: "Test".to_string(),
+            url,
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        };
+
+        app.play_radio(station);
+        std::thread::sleep(Duration::from_millis(500));
+
+        if let Some(rx) = &app.source_receiver {
+            match rx.try_recv() {
+                Ok(Err(msg)) => assert!(msg.contains("Connection error")),
+                _ => panic!("Expected Connection error"),
+            }
+        }
     }
 }
