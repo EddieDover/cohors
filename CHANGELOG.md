@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/EddieDover/cohors/compare/v0.5.3...v0.6.0) (2025-11-29)
+
+
+### Features
+
+* add --invalidate-cache option to force re-download of radio station list ([#36](https://github.com/EddieDover/cohors/issues/36)) ([6cda587](https://github.com/EddieDover/cohors/commit/6cda587d727167c4c7fab44cfda5bfd3606bc2d6))
+* add favorites functionality for files and radio stations ([#39](https://github.com/EddieDover/cohors/issues/39)) ([72191a4](https://github.com/EddieDover/cohors/commit/72191a4262c1325e8545752ad93d545e7aca3b1a))
+* add search and filtering functionality ([#37](https://github.com/EddieDover/cohors/issues/37)) ([0da9bd3](https://github.com/EddieDover/cohors/commit/0da9bd384ee7f07f14a5fa2fa0f01332d503bd05))
+* implement MPRIS support ([#41](https://github.com/EddieDover/cohors/issues/41)) ([1314b4c](https://github.com/EddieDover/cohors/commit/1314b4c5a5c519b7782c00769a5edf2036ae4ac6))
+
+
+### Bug Fixes
+
+* improve file name display handling ([768a2e6](https://github.com/EddieDover/cohors/commit/768a2e66ae9c0ce0e30d9234f370f204a293d04f))
+
 ## [0.5.3](https://github.com/EddieDover/cohors/compare/v0.5.2...v0.5.3) (2025-11-28)
 
 
