@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.0](https://github.com/EddieDover/cohors/compare/v0.6.0...v0.7.0) (2025-12-01)
+
+
+### Features
+
+* add ability to define individual stations ([#45](https://github.com/EddieDover/cohors/issues/45)) ([6a58e9e](https://github.com/EddieDover/cohors/commit/6a58e9ecf5a1fd8c292280590f0d87893639b39a))
+* add ability to export radio stations to personal list ([#51](https://github.com/EddieDover/cohors/issues/51)) ([a1a2812](https://github.com/EddieDover/cohors/commit/a1a28120de638fef2d50fe3afe78072e6829e06f))
+* added modal for adding stations and sources ([#53](https://github.com/EddieDover/cohors/issues/53)) ([ba71d0a](https://github.com/EddieDover/cohors/commit/ba71d0a79bfd19d4917ad705985c153da1f49f7f))
+* show if update is available and link changelog in help screen ([#48](https://github.com/EddieDover/cohors/issues/48)) ([b4adc0b](https://github.com/EddieDover/cohors/commit/b4adc0b9f1b3a94929bb038a2d13e7e008a49064)), closes [#47](https://github.com/EddieDover/cohors/issues/47)
+
+
+### Bug Fixes
+
+* favoriting not working properly during filtering ([#44](https://github.com/EddieDover/cohors/issues/44)) ([c8844fd](https://github.com/EddieDover/cohors/commit/c8844fd855acc02742ffea17955f4c26b62733ce))
+* update release configuration to include extra files for packaging ([#52](https://github.com/EddieDover/cohors/issues/52)) ([edfc7b0](https://github.com/EddieDover/cohors/commit/edfc7b0cb561ce4a32d58bbb00d01d782c7c3cac))
+
 ## [0.6.0](https://github.com/EddieDover/cohors/compare/v0.5.3...v0.6.0) (2025-11-29)
 
 
