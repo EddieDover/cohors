@@ -1053,3 +1053,25 @@ fn test_radio_indexing() {
     // Index 3: Out of bounds
     assert!(app.get_radio_station_at_index(3).is_none());
 }
+
+#[test]
+fn test_check_for_updates_integration() {
+    let mut app = App::new_test();
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.update_receiver = Some(rx);
+
+    // Simulate update found
+    tx.send(Some("9.9.9".to_string())).unwrap();
+    app.on_tick();
+    assert_eq!(app.latest_version, Some("9.9.9".to_string()));
+    assert!(app.update_receiver.is_none());
+
+    // Simulate no update
+    let mut app = App::new_test();
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.update_receiver = Some(rx);
+    tx.send(None).unwrap();
+    app.on_tick();
+    assert_eq!(app.latest_version, None);
+    assert!(app.update_receiver.is_none());
+}

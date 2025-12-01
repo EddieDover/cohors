@@ -7,6 +7,7 @@ use crossterm::event::{self, Event, KeyCode};
 use ratatui::widgets::ListState;
 use ratatui::{Terminal, backend::Backend};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
+use serde::Deserialize;
 use std::{
     fs, io,
     path::PathBuf,
@@ -18,6 +19,12 @@ use std::{
 pub type AudioSource = Box<dyn Source<Item = f32> + Send>;
 pub type SourceResult = Result<AudioSource, String>;
 pub type SourceReceiver = std::sync::mpsc::Receiver<SourceResult>;
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct GitHubRelease {
+    tag_name: String,
+}
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum AppMode {
@@ -73,6 +80,10 @@ pub struct App {
     pub filtered_radio_groups: Vec<RadioGroup>,
     pub mpris_state: Option<std::sync::Arc<std::sync::Mutex<crate::mpris::MprisState>>>,
     pub mpris_notifier: Option<tokio::sync::mpsc::UnboundedSender<()>>,
+    // Version
+    pub current_version: String,
+    pub latest_version: Option<String>,
+    pub update_receiver: Option<std::sync::mpsc::Receiver<Option<String>>>,
 }
 
 impl App {
@@ -131,7 +142,11 @@ impl App {
             filtered_radio_groups: Vec::new(),
             mpris_state: None,
             mpris_notifier: None,
+            current_version: env!("CARGO_PKG_VERSION").to_string(),
+            latest_version: None,
+            update_receiver: None,
         };
+        app.check_for_updates();
         app.load_directory();
         app
     }
@@ -180,7 +195,36 @@ impl App {
             filtered_radio_groups: Vec::new(),
             mpris_state: None,
             mpris_notifier: None,
+            current_version: env!("CARGO_PKG_VERSION").to_string(),
+            latest_version: None,
+            update_receiver: None,
         }
+    }
+
+    pub fn check_for_updates(&mut self) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.update_receiver = Some(rx);
+        let current_version = self.current_version.clone();
+
+        std::thread::spawn(move || {
+            let client = reqwest::blocking::Client::builder()
+                .user_agent("cohors")
+                .build()
+                .unwrap_or_else(|_| reqwest::blocking::Client::new());
+
+            let url = "https://api.github.com/repos/EddieDover/cohors/releases/latest";
+            if let Ok(resp) = client.get(url).send()
+                && resp.status().is_success()
+                && let Ok(release) = resp.json::<GitHubRelease>()
+            {
+                let latest = release.tag_name.trim_start_matches('v').to_string();
+                if latest != current_version {
+                    let _ = tx.send(Some(latest));
+                    return;
+                }
+            }
+            let _ = tx.send(None);
+        });
     }
 
     pub fn load_directory(&mut self) {
@@ -707,6 +751,20 @@ impl App {
     }
 
     pub fn on_tick(&mut self) {
+        // Check for updates
+        if let Some(rx) = &self.update_receiver {
+            match rx.try_recv() {
+                Ok(Some(v)) => {
+                    self.latest_version = Some(v);
+                    self.update_receiver = None;
+                }
+                Ok(None) => {
+                    self.update_receiver = None;
+                }
+                _ => {}
+            }
+        }
+
         let source_result = self
             .source_receiver
             .as_ref()

@@ -422,9 +422,17 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
 
     // Help Bar
+    let version_text = if let Some(latest) = &app.latest_version {
+        format!("{} -> {} Update Available ", app.current_version, latest)
+    } else {
+        format!("{} ", app.current_version)
+    };
+
+    let version_width = version_text.len() as u16;
+
     let help_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(10)])
+        .constraints([Constraint::Min(0), Constraint::Length(version_width)])
         .split(chunks[2]);
 
     if app.is_searching {
@@ -444,7 +452,6 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         f.render_widget(help_paragraph, help_layout[0]);
     }
 
-    let version_text = format!("v{} ", env!("CARGO_PKG_VERSION"));
     let version_paragraph = Paragraph::new(version_text)
         .style(Style::default().fg(Color::Black).bg(Color::White))
         .alignment(ratatui::layout::Alignment::Right);
@@ -522,6 +529,10 @@ fn draw_help_modal(f: &mut Frame) {
         Row::new(vec![
             Cell::from("Repo"),
             Cell::from(env!("CARGO_PKG_REPOSITORY")),
+        ]),
+        Row::new(vec![
+            Cell::from("Changelog"),
+            Cell::from("https://github.com/EddieDover/cohors/blob/master/CHANGELOG.md"),
         ]),
     ];
 

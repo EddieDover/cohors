@@ -312,7 +312,7 @@ fn test_ui_draw_visualizer_no_bars() {
     let backend = TestBackend::new(100, 50);
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app = App::new_test();
-    
+
     // Clear spectrum data
     if let Ok(mut data) = app.spectrum_data.lock() {
         data.clear();
@@ -326,12 +326,12 @@ fn test_ui_draw_favorite_file() {
     let backend = TestBackend::new(100, 50);
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app = App::new_test();
-    
+
     let file = PathBuf::from("fav.mp3");
     app.items = vec![file.clone()];
     app.update_search_results();
     app.favorites.files.push(file.clone());
-    
+
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 }
 
@@ -340,10 +340,68 @@ fn test_ui_draw_invalid_selection() {
     let backend = TestBackend::new(100, 50);
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app = App::new_test();
-    
+
     app.items = vec![PathBuf::from("a")];
     app.update_search_results();
     app.state.select(Some(10)); // Invalid index
+
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
+
+#[test]
+fn test_ui_draw_favorites_coverage() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    app.mode = AppMode::Favorites;
+
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("fav_dir");
+    let file = temp.path().join("fav_file.mp3");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::File::create(&file).unwrap();
+
+    app.favorites.files.push(dir);
+    app.favorites.files.push(file);
+
+    app.favorites.stations.push(crate::radio::RadioStation {
+        name: "Fav Station".to_string(),
+        url: "http://fav.com".to_string(),
+        description: None,
+        homepage: None,
+        tags: None,
+        last_playing: None,
+    });
+
+    // Case 1: Select Directory (to cover is_dir branch)
+    app.favorites_state.select(Some(0));
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    // Case 2: Select File
+    app.favorites_state.select(Some(1));
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    // Case 3: Select Station
+    app.favorites_state.select(Some(2));
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    // Case 4: Out of bounds selection
+    app.favorites_state.select(Some(99));
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    // Case 5: No selection
+    app.favorites_state.select(None);
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
+
+#[test]
+fn test_ui_draw_version_update() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+
+    // Set update available
+    app.latest_version = Some("9.9.9".to_string());
 
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 }
