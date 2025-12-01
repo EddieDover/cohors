@@ -147,6 +147,7 @@ fn main() -> Result<()> {
         station_file,
         None,
         args.invalidate_cache,
+        false,
     )) {
         Ok(groups) => {
             println!("Loaded {} groups", groups.len());

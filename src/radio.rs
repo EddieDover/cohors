@@ -30,7 +30,7 @@ pub struct RadioConfig {
     pub individual_stations: Vec<IndividualStationConfig>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct IndividualStationConfig {
     pub name: String,
     pub station_url: String,
@@ -39,7 +39,7 @@ pub struct IndividualStationConfig {
     pub tags: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RadioSourceConfig {
     pub title: String,
     pub json_url: String,
@@ -47,7 +47,7 @@ pub struct RadioSourceConfig {
     pub mapping: StationMapping,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct StationMapping {
     pub station_name: String,
     pub station_url: String,
@@ -103,6 +103,7 @@ pub async fn fetch_all_stations(
     config_path: Option<PathBuf>,
     home_dir: Option<PathBuf>,
     invalidate_cache: bool,
+    silent: bool,
 ) -> Result<Vec<RadioGroup>> {
     let config = load_config(config_path, home_dir.clone(), None)?;
     let mut groups = Vec::new();
@@ -128,7 +129,7 @@ pub async fn fetch_all_stations(
     }
 
     for source in config.sources {
-        match fetch_stations(&source, home_dir.clone(), invalidate_cache).await {
+        match fetch_stations(&source, home_dir.clone(), invalidate_cache, silent).await {
             Ok(stations) => {
                 groups.push(RadioGroup {
                     title: source.title,
@@ -141,6 +142,14 @@ pub async fn fetch_all_stations(
     }
 
     Ok(groups)
+}
+
+pub fn invalidate_source_cache(title: &str, home_dir: Option<PathBuf>) {
+    if let Some(path) = get_cache_path(title, home_dir)
+        && path.exists()
+    {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 fn get_cache_path(source_title: &str, home_dir: Option<PathBuf>) -> Option<PathBuf> {
@@ -162,6 +171,7 @@ pub async fn fetch_stations(
     source: &RadioSourceConfig,
     home_dir: Option<PathBuf>,
     invalidate_cache: bool,
+    silent: bool,
 ) -> Result<Vec<RadioStation>> {
     let cache_path = get_cache_path(&source.title, home_dir);
     let mut cached_json: Option<Value> = None;
@@ -171,7 +181,9 @@ pub async fn fetch_stations(
             && path.exists()
         {
             let _ = fs::remove_file(path);
-            println!("  [CACHE] Invalidated '{}'", source.title);
+            if !silent {
+                println!("  [CACHE] Invalidated '{}'", source.title);
+            }
         }
     } else if let Some(path) = &cache_path
         && path.exists()
@@ -197,10 +209,14 @@ pub async fn fetch_stations(
     }
 
     let json = if let Some(json) = cached_json {
-        println!("  [CACHE] Loaded '{}'", source.title);
+        if !silent {
+            println!("  [CACHE] Loaded '{}'", source.title);
+        }
         json
     } else {
-        println!("  [WEB] Downloading '{}'...", source.title);
+        if !silent {
+            println!("  [WEB] Downloading '{}'...", source.title);
+        }
         let response = reqwest::get(&source.json_url).await?;
         let text = response.text().await?;
 
@@ -209,7 +225,7 @@ pub async fn fetch_stations(
             if let Some(parent) = path.parent() {
                 let _ = fs::create_dir_all(parent);
             }
-            if fs::write(path, &text).is_ok() {
+            if fs::write(path, &text).is_ok() && !silent {
                 println!("  [CACHE] Saved '{}'", source.title);
             }
         }
@@ -405,5 +421,88 @@ pub fn add_station_to_config(config_path: &std::path::Path, station: &RadioStati
 
     let content = serde_json::to_string_pretty(&config)?;
     fs::write(config_path, content)?;
+    Ok(())
+}
+
+pub fn add_source_to_config(
+    config_path: &std::path::Path,
+    source: &RadioSourceConfig,
+) -> Result<()> {
+    let mut config: RadioConfig = if config_path.exists() {
+        let content = fs::read_to_string(config_path)?;
+        serde_json::from_str(&content)?
+    } else {
+        RadioConfig {
+            sources: Vec::new(),
+            individual_stations: Vec::new(),
+        }
+    };
+
+    // Check if source already exists
+    if config
+        .sources
+        .iter()
+        .any(|s| s.title == source.title || s.json_url == source.json_url)
+    {
+        return Ok(()); // Already exists
+    }
+
+    config.sources.push(source.clone());
+
+    // Ensure directory exists
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let content = serde_json::to_string_pretty(&config)?;
+    fs::write(config_path, content)?;
+    Ok(())
+}
+
+pub fn edit_station_in_config(
+    config_path: &std::path::Path,
+    old_url: &str,
+    station: &RadioStation,
+) -> Result<()> {
+    if !config_path.exists() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(config_path)?;
+    let mut config: RadioConfig = serde_json::from_str(&content)?;
+
+    if let Some(idx) = config
+        .individual_stations
+        .iter()
+        .position(|s| s.station_url == old_url)
+    {
+        config.individual_stations[idx] = IndividualStationConfig {
+            name: station.name.clone(),
+            station_url: station.url.clone(),
+            description: station.description.clone(),
+            homepage: station.homepage.clone(),
+            tags: station.tags.clone(),
+        };
+        let content = serde_json::to_string_pretty(&config)?;
+        fs::write(config_path, content)?;
+    }
+    Ok(())
+}
+
+pub fn edit_source_in_config(
+    config_path: &std::path::Path,
+    old_title: &str,
+    source: &RadioSourceConfig,
+) -> Result<()> {
+    if !config_path.exists() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(config_path)?;
+    let mut config: RadioConfig = serde_json::from_str(&content)?;
+
+    if let Some(idx) = config.sources.iter().position(|s| s.title == old_title) {
+        config.sources[idx] = source.clone();
+        let content = serde_json::to_string_pretty(&config)?;
+        fs::write(config_path, content)?;
+    }
     Ok(())
 }

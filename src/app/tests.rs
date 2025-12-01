@@ -1174,3 +1174,201 @@ fn test_notification_expiry() {
 
     assert!(app.notification.is_none());
 }
+
+#[test]
+fn test_add_modal_flow() {
+    let mut app = App::new_test();
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_path = temp.path().join("stations.config.json");
+    app.config_path = Some(config_path.clone());
+
+    // Open modal
+    app.open_add_modal();
+    assert!(matches!(
+        app.add_modal_state,
+        Some(AddModalState::Selection)
+    ));
+
+    // Select Station
+    app.handle_add_modal_input(KeyCode::Char('s'));
+    if let Some(AddModalState::InputStation {
+        name,
+        focused_field,
+        ..
+    }) = &app.add_modal_state
+    {
+        assert_eq!(name, "");
+        assert_eq!(*focused_field, 0);
+    } else {
+        panic!("Expected InputStation state");
+    }
+
+    // Type Name
+    app.handle_add_modal_input(KeyCode::Char('T'));
+    app.handle_add_modal_input(KeyCode::Char('e'));
+    app.handle_add_modal_input(KeyCode::Char('s'));
+    app.handle_add_modal_input(KeyCode::Char('t'));
+
+    // Next field (URL)
+    app.handle_add_modal_input(KeyCode::Tab);
+
+    // Type URL
+    app.handle_add_modal_input(KeyCode::Char('h'));
+    app.handle_add_modal_input(KeyCode::Char('t'));
+    app.handle_add_modal_input(KeyCode::Char('t'));
+    app.handle_add_modal_input(KeyCode::Char('p'));
+
+    // Save
+    app.handle_add_modal_input(KeyCode::Enter);
+
+    // Check if saved
+    assert!(app.add_modal_state.is_none());
+    assert!(config_path.exists());
+    let content = std::fs::read_to_string(&config_path).unwrap();
+    assert!(content.contains("Test"));
+    assert!(content.contains("http"));
+}
+
+#[test]
+fn test_add_modal_source_flow() {
+    let mut app = App::new_test();
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_path = temp.path().join("stations.config.json");
+    app.config_path = Some(config_path.clone());
+
+    // Open modal
+    app.open_add_modal();
+
+    // Select Source
+    app.handle_add_modal_input(KeyCode::Char('r'));
+    if let Some(AddModalState::InputSource {
+        title,
+        focused_field,
+        ..
+    }) = &app.add_modal_state
+    {
+        assert_eq!(title, "");
+        assert_eq!(*focused_field, 0);
+    } else {
+        panic!("Expected InputSource state");
+    }
+
+    // Type Title
+    app.handle_add_modal_input(KeyCode::Char('S'));
+    app.handle_add_modal_input(KeyCode::Char('r'));
+    app.handle_add_modal_input(KeyCode::Char('c'));
+
+    // Next field (JSON URL)
+    app.handle_add_modal_input(KeyCode::Tab);
+    app.handle_add_modal_input(KeyCode::Char('h'));
+    app.handle_add_modal_input(KeyCode::Char('t'));
+    app.handle_add_modal_input(KeyCode::Char('t'));
+    app.handle_add_modal_input(KeyCode::Char('p'));
+
+    // Next field (Container) - Optional
+    app.handle_add_modal_input(KeyCode::Tab);
+
+    // Next field (Map Name)
+    app.handle_add_modal_input(KeyCode::Tab);
+    app.handle_add_modal_input(KeyCode::Char('n'));
+
+    // Next field (Map URL)
+    app.handle_add_modal_input(KeyCode::Tab);
+    app.handle_add_modal_input(KeyCode::Char('u'));
+
+    // Save
+    app.handle_add_modal_input(KeyCode::Enter);
+
+    // Check if saved
+    assert!(app.add_modal_state.is_none());
+    assert!(config_path.exists());
+    let content = std::fs::read_to_string(&config_path).unwrap();
+    assert!(content.contains("Src"));
+}
+
+#[test]
+fn test_add_modal_navigation() {
+    let mut app = App::new_test();
+    app.open_add_modal();
+    app.handle_add_modal_input(KeyCode::Char('s')); // Station mode
+
+    // Check initial focus
+    if let Some(AddModalState::InputStation { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 0);
+    }
+
+    // Tab forward
+    app.handle_add_modal_input(KeyCode::Tab);
+    if let Some(AddModalState::InputStation { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 1);
+    }
+
+    // BackTab backward
+    app.handle_add_modal_input(KeyCode::BackTab);
+    if let Some(AddModalState::InputStation { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 0);
+    }
+
+    // Wrap around backward
+    app.handle_add_modal_input(KeyCode::BackTab);
+    if let Some(AddModalState::InputStation { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 4); // Last field
+    }
+}
+
+#[test]
+fn test_add_modal_cancel() {
+    let mut app = App::new_test();
+    app.open_add_modal();
+    assert!(app.add_modal_state.is_some());
+
+    app.handle_add_modal_input(KeyCode::Esc);
+    assert!(app.add_modal_state.is_none());
+
+    // Cancel from input state
+    app.open_add_modal();
+    app.handle_add_modal_input(KeyCode::Char('s'));
+    assert!(matches!(
+        app.add_modal_state,
+        Some(AddModalState::InputStation { .. })
+    ));
+
+    app.handle_add_modal_input(KeyCode::Esc);
+    assert!(app.add_modal_state.is_none());
+}
+
+#[test]
+fn test_add_modal_validation() {
+    let mut app = App::new_test();
+    app.open_add_modal();
+
+    // 1. Station Validation
+    app.handle_add_modal_input(KeyCode::Char('s'));
+    // Try to save empty
+    app.handle_add_modal_input(KeyCode::Enter);
+
+    assert!(app.notification.is_some());
+    assert!(app.notification.as_ref().unwrap().0.contains("required"));
+    // Should still be in modal
+    assert!(matches!(
+        app.add_modal_state,
+        Some(AddModalState::InputStation { .. })
+    ));
+
+    // 2. Source Validation
+    app.add_modal_state = None;
+    app.notification = None;
+    app.open_add_modal();
+    app.handle_add_modal_input(KeyCode::Char('r'));
+
+    // Try to save empty
+    app.handle_add_modal_input(KeyCode::Enter);
+
+    assert!(app.notification.is_some());
+    assert!(app.notification.as_ref().unwrap().0.contains("required"));
+    // Should still be in modal
+    assert!(matches!(
+        app.add_modal_state,
+        Some(AddModalState::InputSource { .. })
+    ));
+}

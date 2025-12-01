@@ -32,6 +32,8 @@ I'm happy to hear your feedback and feature requests! I'm also very open to PRs 
 | `l` | Toggle Loop Mode (Off / Track/ Folder) |
 | `h` | Toggle hidden files in File View Mode |
 | `x` | Export selected radio station to config |
+| `a` | Add Station/Source |
+| `e` | Edit Station/Source |
 
 ## Command Line Arguments
 

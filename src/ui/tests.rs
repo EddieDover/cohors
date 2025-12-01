@@ -427,3 +427,53 @@ fn test_ui_draw_version_update() {
 
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 }
+
+#[test]
+fn test_ui_draw_add_modal() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+
+    // 1. Selection State
+    app.add_modal_state = Some(AddModalState::Selection);
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    // 2. Input Station State
+    app.add_modal_state = Some(AddModalState::InputStation {
+        name: "Test Station".to_string(),
+        url: "http://test.com".to_string(),
+        description: "Desc".to_string(),
+        homepage: "Home".to_string(),
+        tags: "Tags".to_string(),
+        focused_field: 0,
+        original_url: None,
+    });
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    // Test focus on different fields
+    if let Some(AddModalState::InputStation { focused_field, .. }) = &mut app.add_modal_state {
+        *focused_field = 1;
+    }
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    // 3. Input Source State
+    app.add_modal_state = Some(AddModalState::InputSource {
+        title: "Test Source".to_string(),
+        json_url: "http://json.com".to_string(),
+        container: "data".to_string(),
+        map_name: "n".to_string(),
+        map_url: "u".to_string(),
+        map_desc: "d".to_string(),
+        map_home: "h".to_string(),
+        map_tags: "t".to_string(),
+        focused_field: 0,
+        original_title: None,
+    });
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    // Test focus on different fields
+    if let Some(AddModalState::InputSource { focused_field, .. }) = &mut app.add_modal_state {
+        *focused_field = 3;
+    }
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
