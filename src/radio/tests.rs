@@ -576,3 +576,187 @@ async fn test_fetch_all_stations_individual() {
     assert_eq!(groups[0].stations.len(), 1);
     assert_eq!(groups[0].stations[0].name, "My Station");
 }
+
+#[test]
+fn test_get_string_field_types() {
+    let json = serde_json::json!({
+        "string": "value",
+        "number": 123,
+        "float": 45.67,
+        "bool": true,
+        "null": null,
+        "object": {},
+        "array": []
+    });
+
+    assert_eq!(get_string_field(&json, "string").unwrap(), "value");
+    assert_eq!(get_string_field(&json, "number").unwrap(), "123");
+    assert!(get_string_field(&json, "bool").is_none());
+    assert!(get_string_field(&json, "null").is_none());
+    assert!(get_string_field(&json, "object").is_none());
+    assert!(get_string_field(&json, "array").is_none());
+}
+
+#[tokio::test]
+async fn test_fetch_stations_cache_future_timestamp() {
+    let mut server = mockito::Server::new_async().await;
+    let _m = server
+        .mock("GET", "/stations.json")
+        .with_status(200)
+        .with_body(r#"[{"name": "New Station", "url": "http://new.com"}]"#)
+        .create_async()
+        .await;
+
+    let temp_home = tempdir().unwrap();
+    let cache_dir = temp_home.path().join(".cache/cohors/stations");
+    std::fs::create_dir_all(&cache_dir).unwrap();
+    let cache_file = cache_dir.join("Test_Source.json");
+
+    // Write cache file
+    std::fs::write(
+        &cache_file,
+        r#"[{"name": "Cached Station", "url": "http://cached.com"}]"#,
+    )
+    .unwrap();
+
+    // Set modification time to future
+    let file = std::fs::File::open(&cache_file).unwrap();
+    let future_time = SystemTime::now() + Duration::from_secs(3600);
+    file.set_modified(future_time).unwrap();
+
+    let source = RadioSourceConfig {
+        title: "Test Source".to_string(),
+        json_url: format!("{}/stations.json", server.url()),
+        container: None,
+        mapping: StationMapping {
+            station_name: "name".to_string(),
+            station_url: "url".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        },
+    };
+
+    // Fetch should use cache because it's "fresh" (future timestamp)
+    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false)
+        .await
+        .unwrap();
+
+    assert_eq!(stations.len(), 1);
+    assert_eq!(stations[0].name, "Cached Station");
+}
+
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn test_fetch_stations_no_home_dir() {
+    let mut server = mockito::Server::new_async().await;
+    let _m = server
+        .mock("GET", "/stations.json")
+        .with_status(200)
+        .with_body(r#"[{"name": "Station 1", "url": "http://1.com"}]"#)
+        .create_async()
+        .await;
+
+    let source = RadioSourceConfig {
+        title: "NoHome".to_string(),
+        json_url: format!("{}/stations.json", server.url()),
+        container: None,
+        mapping: StationMapping {
+            station_name: "name".to_string(),
+            station_url: "url".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        },
+    };
+
+    let _guard = crate::test_utils::ENV_MUTEX.lock().unwrap();
+    unsafe {
+        std::env::remove_var("HOME");
+    }
+
+    let stations = fetch_stations(&source, None, false).await.unwrap();
+    assert_eq!(stations.len(), 1);
+
+    // Restore HOME if needed? The mutex protects other tests.
+}
+
+#[tokio::test]
+async fn test_fetch_stations_invalid_container() {
+    let mut server = mockito::Server::new_async().await;
+
+    // Case 1: Container specified but missing in JSON
+    let _m1 = server
+        .mock("GET", "/missing.json")
+        .with_status(200)
+        .with_body(r#"{"other": []}"#)
+        .create_async()
+        .await;
+
+    let source_missing = RadioSourceConfig {
+        title: "Missing".to_string(),
+        json_url: format!("{}/missing.json", server.url()),
+        container: Some("stations".to_string()),
+        mapping: StationMapping {
+            station_name: "n".to_string(),
+            station_url: "u".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        },
+    };
+    assert!(fetch_stations(&source_missing, None, false).await.is_err());
+
+    // Case 2: Container specified but not an array
+    let _m2 = server
+        .mock("GET", "/not_array.json")
+        .with_status(200)
+        .with_body(r#"{"stations": "invalid"}"#)
+        .create_async()
+        .await;
+
+    let source_not_array = RadioSourceConfig {
+        title: "NotArray".to_string(),
+        json_url: format!("{}/not_array.json", server.url()),
+        container: Some("stations".to_string()),
+        mapping: StationMapping {
+            station_name: "n".to_string(),
+            station_url: "u".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        },
+    };
+    assert!(
+        fetch_stations(&source_not_array, None, false)
+            .await
+            .is_err()
+    );
+
+    // Case 3: No container, root is not array
+    let _m3 = server
+        .mock("GET", "/root_obj.json")
+        .with_status(200)
+        .with_body(r#"{"stations": []}"#)
+        .create_async()
+        .await;
+
+    let source_root = RadioSourceConfig {
+        title: "RootObj".to_string(),
+        json_url: format!("{}/root_obj.json", server.url()),
+        container: None,
+        mapping: StationMapping {
+            station_name: "n".to_string(),
+            station_url: "u".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        },
+    };
+    assert!(fetch_stations(&source_root, None, false).await.is_err());
+}
