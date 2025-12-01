@@ -298,6 +298,5 @@ pub fn parse_m3u(content: &str) -> Result<String> {
     anyhow::bail!("No stream URL found in M3U")
 }
 
-
 #[cfg(test)]
 mod tests;

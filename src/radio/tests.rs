@@ -392,3 +392,131 @@ async fn test_fetch_real_stations() {
         println!("Group: {} ({} stations)", group.title, group.stations.len());
     }
 }
+
+#[tokio::test]
+async fn test_fetch_all_stations_error_handling() {
+    let temp_dir = tempdir().unwrap();
+    let config_path = temp_dir.path().join("stations.config.json");
+
+    // Mock server that returns 500
+    let mut server = mockito::Server::new_async().await;
+    let _m = server
+        .mock("GET", "/stations.json")
+        .with_status(500)
+        .create_async()
+        .await;
+
+    let config_content = format!(
+        r#"{{
+        "sources": [
+            {{
+                "title": "Error Source",
+                "json_url": "{}/stations.json",
+                "mapping": {{
+                    "station_name": "name",
+                    "station_url": "url"
+                }}
+            }}
+        ]
+    }}"#,
+        server.url()
+    );
+
+    std::fs::write(&config_path, config_content).unwrap();
+
+    // Should not fail, but return empty list (or list with other successful sources)
+    let groups = fetch_all_stations(Some(config_path), true).await.unwrap();
+    assert_eq!(groups.len(), 0);
+}
+
+#[tokio::test]
+async fn test_fetch_stations_cache_invalidation() {
+    let mut server = mockito::Server::new_async().await;
+    let _m = server
+        .mock("GET", "/stations.json")
+        .with_status(200)
+        .with_body(r#"[{"name": "Station 1", "url": "http://1.com"}]"#)
+        .create_async()
+        .await;
+
+    let temp_home = tempdir().unwrap();
+    let cache_dir = temp_home.path().join(".cache/cohors/stations");
+    std::fs::create_dir_all(&cache_dir).unwrap();
+    let cache_file = cache_dir.join("Test_Source.json");
+    std::fs::write(&cache_file, "old data").unwrap();
+
+    let source = RadioSourceConfig {
+        title: "Test Source".to_string(),
+        json_url: format!("{}/stations.json", server.url()),
+        container: None,
+        mapping: StationMapping {
+            station_name: "name".to_string(),
+            station_url: "url".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        },
+    };
+
+    // Fetch with invalidate_cache = true
+    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), true)
+        .await
+        .unwrap();
+
+    assert_eq!(stations.len(), 1);
+    assert_eq!(stations[0].name, "Station 1");
+
+    // Cache file should have been overwritten with new data
+    let content = std::fs::read_to_string(cache_file).unwrap();
+    assert!(content.contains("Station 1"));
+}
+
+#[tokio::test]
+async fn test_fetch_stations_cache_expiry() {
+    let mut server = mockito::Server::new_async().await;
+    let _m = server
+        .mock("GET", "/stations.json")
+        .with_status(200)
+        .with_body(r#"[{"name": "New Station", "url": "http://new.com"}]"#)
+        .create_async()
+        .await;
+
+    let temp_home = tempdir().unwrap();
+    let cache_dir = temp_home.path().join(".cache/cohors/stations");
+    std::fs::create_dir_all(&cache_dir).unwrap();
+    let cache_file = cache_dir.join("Test_Source.json");
+
+    // Write old cache file (8 days old)
+    std::fs::write(
+        &cache_file,
+        r#"[{"name": "Old Station", "url": "http://old.com"}]"#,
+    )
+    .unwrap();
+
+    let file = std::fs::File::open(&cache_file).unwrap();
+    let old_time = SystemTime::now() - Duration::from_secs(8 * 24 * 60 * 60);
+    file.set_modified(old_time).unwrap();
+
+    let source = RadioSourceConfig {
+        title: "Test Source".to_string(),
+        json_url: format!("{}/stations.json", server.url()),
+        container: None,
+        mapping: StationMapping {
+            station_name: "name".to_string(),
+            station_url: "url".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        },
+    };
+
+    // Fetch should ignore cache because it's old
+    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false)
+        .await
+        .unwrap();
+
+    assert_eq!(stations.len(), 1);
+    assert_eq!(stations[0].name, "New Station");
+}
