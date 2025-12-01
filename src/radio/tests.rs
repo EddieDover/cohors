@@ -530,7 +530,7 @@ fn test_load_config_individual_stations() {
     let dir = tempdir().unwrap();
     let file_path = dir.path().join("individual.json");
     let content = r#"{
-        "individualStations": [
+        "stations": [
             {
                 "name": "My Station",
                 "station_url": "http://mystation.com",
@@ -559,7 +559,7 @@ async fn test_fetch_all_stations_individual() {
     let dir = tempdir().unwrap();
     let file_path = dir.path().join("individual.json");
     let content = r#"{
-        "individualStations": [
+        "stations": [
             {
                 "name": "My Station",
                 "station_url": "http://mystation.com"
@@ -572,7 +572,7 @@ async fn test_fetch_all_stations_individual() {
         .await
         .unwrap();
     assert_eq!(groups.len(), 1);
-    assert_eq!(groups[0].title, "Individual Stations");
+    assert_eq!(groups[0].title, "Custom Stations");
     assert_eq!(groups[0].stations.len(), 1);
     assert_eq!(groups[0].stations[0].name, "My Station");
 }

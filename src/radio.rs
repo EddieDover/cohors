@@ -26,7 +26,7 @@ pub struct RadioStation {
 pub struct RadioConfig {
     #[serde(default)]
     pub sources: Vec<RadioSourceConfig>,
-    #[serde(default, rename = "individualStations")]
+    #[serde(default, rename = "stations")]
     pub individual_stations: Vec<IndividualStationConfig>,
 }
 
@@ -121,7 +121,7 @@ pub async fn fetch_all_stations(
             });
         }
         groups.push(RadioGroup {
-            title: "Individual Stations".to_string(),
+            title: "Custom Stations".to_string(),
             stations,
             is_expanded: true,
         });
