@@ -3,7 +3,13 @@
     ".": {
       "release-type": "rust",
       "package-name": "cohors",
-      "include-component-in-tag": false
+      "include-component-in-tag": false,
+      "extra-files": [
+        {
+          "type": "simple",
+          "path": "packaging/arch/PKGBUILD"
+        }
+      ]
     }
   }
 }
