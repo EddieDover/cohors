@@ -21,13 +21,6 @@ impl Favorites {
                     Ok(favorites) => return favorites,
                     Err(e) => {
                         eprintln!("Failed to parse favorites: {}", e);
-                        // Backup corrupted file
-                        let backup_path = favorites_path.with_extension("json.bak");
-                        if let Err(e) = fs::copy(&favorites_path, &backup_path) {
-                            eprintln!("Failed to backup corrupted favorites: {}", e);
-                        } else {
-                            eprintln!("Backed up corrupted favorites to {:?}", backup_path);
-                        }
                     }
                 },
                 Err(e) => eprintln!("Failed to read favorites file: {}", e),

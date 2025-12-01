@@ -1,34 +1,7 @@
 use super::*;
-use std::env;
+use crate::test_utils::with_xdg_config_home;
 use std::fs;
-use std::sync::Mutex;
 use tempfile::tempdir;
-
-static ENV_MUTEX: Mutex<()> = Mutex::new(());
-
-// Helper to run test with modified environment
-fn with_xdg_config_home<F>(path: &std::path::Path, f: F)
-where
-    F: FnOnce(),
-{
-    let _lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let key = "XDG_CONFIG_HOME";
-    let old_val = env::var_os(key);
-    unsafe {
-        env::set_var(key, path);
-    }
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-    unsafe {
-        if let Some(val) = old_val {
-            env::set_var(key, val);
-        } else {
-            env::remove_var(key);
-        }
-    }
-    if let Err(e) = result {
-        std::panic::resume_unwind(e);
-    }
-}
 
 #[test]
 fn test_app_initialization() {
@@ -694,6 +667,7 @@ fn test_favorites() {
             stations: vec![station.clone()],
             is_expanded: true,
         });
+        app.update_search_results();
         app.radio_state.select(Some(1)); // 0 is group header, 1 is station
 
         app.toggle_favorite();
@@ -1063,6 +1037,7 @@ fn test_radio_indexing() {
     };
     app.radio_groups.push(group1);
     app.radio_groups.push(group2);
+    app.update_search_results();
 
     // Index 0: Group 1 Header
     assert!(app.get_radio_station_at_index(0).is_none());
