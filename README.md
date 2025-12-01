@@ -115,3 +115,21 @@ For the configuration above, the `json_url` (`https://api.example.com/stations.j
 
 The `container` field is set to `"stations"`, telling Cohors to look inside that property for the list. The `mapping` then connects fields like `name` to `station_name` and `stream_url` to `station_url`.
 
+### Individual Stations
+
+You can also define individual stations directly in the configuration file using the `individualStations` key. This is useful for adding custom streams that aren't part of an API.
+
+```json
+{
+  "individualStations": [
+    {
+      "name": "My Favorite Station",
+      "station_url": "http://stream.example.com/radio",
+      "description": "Best hits 24/7",
+      "homepage": "http://example.com",
+      "tags": "Pop, Rock"
+    }
+  ]
+}
+```
+

@@ -24,7 +24,19 @@ pub struct RadioStation {
 
 #[derive(Debug, Deserialize)]
 pub struct RadioConfig {
+    #[serde(default)]
     pub sources: Vec<RadioSourceConfig>,
+    #[serde(default, rename = "individualStations")]
+    pub individual_stations: Vec<IndividualStationConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IndividualStationConfig {
+    pub name: String,
+    pub station_url: String,
+    pub description: Option<String>,
+    pub homepage: Option<String>,
+    pub tags: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,12 +101,34 @@ pub fn load_config(
 
 pub async fn fetch_all_stations(
     config_path: Option<PathBuf>,
+    home_dir: Option<PathBuf>,
     invalidate_cache: bool,
 ) -> Result<Vec<RadioGroup>> {
-    let config = load_config(config_path, None, None)?;
+    let config = load_config(config_path, home_dir.clone(), None)?;
     let mut groups = Vec::new();
+
+    // Process individual stations first
+    if !config.individual_stations.is_empty() {
+        let mut stations = Vec::new();
+        for s in config.individual_stations {
+            stations.push(RadioStation {
+                name: s.name,
+                url: s.station_url,
+                description: s.description,
+                homepage: s.homepage,
+                tags: s.tags,
+                last_playing: None,
+            });
+        }
+        groups.push(RadioGroup {
+            title: "Individual Stations".to_string(),
+            stations,
+            is_expanded: true,
+        });
+    }
+
     for source in config.sources {
-        match fetch_stations(&source, None, invalidate_cache).await {
+        match fetch_stations(&source, home_dir.clone(), invalidate_cache).await {
             Ok(stations) => {
                 groups.push(RadioGroup {
                     title: source.title,
@@ -105,6 +139,7 @@ pub async fn fetch_all_stations(
             Err(e) => eprintln!("Error fetching stations from {}: {}", source.title, e),
         }
     }
+
     Ok(groups)
 }
 

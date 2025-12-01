@@ -127,7 +127,9 @@ async fn test_fetch_all_stations() {
 
     std::fs::write(&config_path, config_content).unwrap();
 
-    let groups = fetch_all_stations(Some(config_path), true).await.unwrap();
+    let groups = fetch_all_stations(Some(config_path), None, true)
+        .await
+        .unwrap();
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].title, "Test Source");
     assert_eq!(groups[0].stations.len(), 1);
@@ -386,7 +388,7 @@ async fn test_fetch_stations_invalid_json() {
 #[ignore]
 async fn test_fetch_real_stations() {
     // Ensure we can find the config file in the current directory
-    let groups = fetch_all_stations(None, false).await.unwrap();
+    let groups = fetch_all_stations(None, None, false).await.unwrap();
     println!("Fetched {} groups", groups.len());
     for group in groups {
         println!("Group: {} ({} stations)", group.title, group.stations.len());
@@ -425,7 +427,9 @@ async fn test_fetch_all_stations_error_handling() {
     std::fs::write(&config_path, config_content).unwrap();
 
     // Should not fail, but return empty list (or list with other successful sources)
-    let groups = fetch_all_stations(Some(config_path), true).await.unwrap();
+    let groups = fetch_all_stations(Some(config_path), None, true)
+        .await
+        .unwrap();
     assert_eq!(groups.len(), 0);
 }
 
@@ -519,4 +523,56 @@ async fn test_fetch_stations_cache_expiry() {
 
     assert_eq!(stations.len(), 1);
     assert_eq!(stations[0].name, "New Station");
+}
+
+#[test]
+fn test_load_config_individual_stations() {
+    let dir = tempdir().unwrap();
+    let file_path = dir.path().join("individual.json");
+    let content = r#"{
+        "individualStations": [
+            {
+                "name": "My Station",
+                "station_url": "http://mystation.com",
+                "description": "My Description"
+            }
+        ]
+    }"#;
+    fs::write(&file_path, content).unwrap();
+
+    let configs = load_config(Some(file_path), None, None).unwrap();
+    assert_eq!(configs.sources.len(), 0);
+    assert_eq!(configs.individual_stations.len(), 1);
+    assert_eq!(configs.individual_stations[0].name, "My Station");
+    assert_eq!(
+        configs.individual_stations[0].station_url,
+        "http://mystation.com"
+    );
+    assert_eq!(
+        configs.individual_stations[0].description,
+        Some("My Description".to_string())
+    );
+}
+
+#[tokio::test]
+async fn test_fetch_all_stations_individual() {
+    let dir = tempdir().unwrap();
+    let file_path = dir.path().join("individual.json");
+    let content = r#"{
+        "individualStations": [
+            {
+                "name": "My Station",
+                "station_url": "http://mystation.com"
+            }
+        ]
+    }"#;
+    fs::write(&file_path, content).unwrap();
+
+    let groups = fetch_all_stations(Some(file_path), None, false)
+        .await
+        .unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].title, "Individual Stations");
+    assert_eq!(groups[0].stations.len(), 1);
+    assert_eq!(groups[0].stations[0].name, "My Station");
 }
