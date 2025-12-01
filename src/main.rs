@@ -3,6 +3,8 @@ mod audio;
 mod favorites;
 mod mpris;
 mod radio;
+#[cfg(test)]
+pub mod test_utils;
 mod ui;
 
 use anyhow::Result;
