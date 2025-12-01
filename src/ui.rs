@@ -457,6 +457,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .alignment(ratatui::layout::Alignment::Right);
     f.render_widget(version_paragraph, help_layout[1]);
 
+    draw_notification(f, app);
+
     if app.show_help {
         draw_help_modal(f);
     }
@@ -532,18 +534,19 @@ fn draw_help_modal(f: &mut Frame) {
         Row::new(vec![Cell::from("Bksp"), Cell::from("Go Up Dir")]),
         // Files
         Row::new(vec![Cell::from("")]),
-        Row::new(vec![Cell::from("Files"), Cell::from("")]).style(
+        Row::new(vec![Cell::from("Files / Radio"), Cell::from("")]).style(
             Style::default()
                 .add_modifier(Modifier::BOLD)
                 .fg(Color::Yellow),
         ),
         Row::new(vec![Cell::from("h"), Cell::from("Toggle Hidden")]),
         Row::new(vec![Cell::from("f"), Cell::from("Toggle Favorite")]),
+        Row::new(vec![Cell::from("x"), Cell::from("Export Station")]),
     ];
 
     let table_right = Table::new(
         rows_right,
-        [Constraint::Percentage(30), Constraint::Percentage(70)],
+        [Constraint::Percentage(50), Constraint::Percentage(50)],
     )
     .header(
         Row::new(vec!["Key", "Action"])
@@ -583,6 +586,24 @@ fn draw_help_modal(f: &mut Frame) {
     .column_spacing(1);
 
     f.render_widget(table_about, vertical_chunks[1]);
+}
+
+fn draw_notification(f: &mut Frame, app: &App) {
+    if let Some((msg, _)) = &app.notification {
+        let size = f.area();
+        let width = (msg.len() as u16 + 4).clamp(20, 40);
+        let height = 3;
+        let area = Rect::new(size.width.saturating_sub(width + 2), 1, width, height);
+        f.render_widget(Clear, area);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .style(Style::default().fg(Color::Green));
+        let paragraph = Paragraph::new(msg.as_str())
+            .block(block)
+            .wrap(ratatui::widgets::Wrap { trim: true })
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(paragraph, area);
+    }
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {

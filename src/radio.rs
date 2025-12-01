@@ -22,7 +22,7 @@ pub struct RadioStation {
     pub last_playing: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct RadioConfig {
     #[serde(default)]
     pub sources: Vec<RadioSourceConfig>,
@@ -30,7 +30,7 @@ pub struct RadioConfig {
     pub individual_stations: Vec<IndividualStationConfig>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct IndividualStationConfig {
     pub name: String,
     pub station_url: String,
@@ -39,7 +39,7 @@ pub struct IndividualStationConfig {
     pub tags: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct RadioSourceConfig {
     pub title: String,
     pub json_url: String,
@@ -47,7 +47,7 @@ pub struct RadioSourceConfig {
     pub mapping: StationMapping,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct StationMapping {
     pub station_name: String,
     pub station_url: String,
@@ -335,3 +335,75 @@ pub fn parse_m3u(content: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_export;
+
+pub fn resolve_config_path(
+    custom_path: Option<PathBuf>,
+    home_dir: Option<PathBuf>,
+    current_dir: Option<PathBuf>,
+) -> PathBuf {
+    if let Some(path) = custom_path {
+        return path;
+    }
+
+    let home = home_dir.or_else(|| std::env::var("HOME").ok().map(PathBuf::from));
+    if let Some(h) = &home {
+        let config_path = h.join(".config/cohors/stations.config.json");
+        if config_path.exists() {
+            return config_path;
+        }
+    }
+
+    let cwd = current_dir.unwrap_or_else(|| PathBuf::from("."));
+    let local_path = cwd.join("stations.config.json");
+    if local_path.exists() {
+        return local_path;
+    }
+
+    // Default to ~/.config/cohors/stations.config.json if nothing exists
+    if let Some(h) = home {
+        return h.join(".config/cohors/stations.config.json");
+    }
+
+    // Fallback to local
+    cwd.join("stations.config.json")
+}
+
+pub fn add_station_to_config(config_path: &std::path::Path, station: &RadioStation) -> Result<()> {
+    let mut config: RadioConfig = if config_path.exists() {
+        let content = fs::read_to_string(config_path)?;
+        serde_json::from_str(&content)?
+    } else {
+        RadioConfig {
+            sources: Vec::new(),
+            individual_stations: Vec::new(),
+        }
+    };
+
+    // Check if station already exists
+    if config
+        .individual_stations
+        .iter()
+        .any(|s| s.station_url == station.url)
+    {
+        return Ok(()); // Already exists
+    }
+
+    config.individual_stations.push(IndividualStationConfig {
+        name: station.name.clone(),
+        station_url: station.url.clone(),
+        description: station.description.clone(),
+        homepage: station.homepage.clone(),
+        tags: station.tags.clone(),
+    });
+
+    // Ensure directory exists
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let content = serde_json::to_string_pretty(&config)?;
+    fs::write(config_path, content)?;
+    Ok(())
+}

@@ -84,6 +84,8 @@ pub struct App {
     pub current_version: String,
     pub latest_version: Option<String>,
     pub update_receiver: Option<std::sync::mpsc::Receiver<Option<String>>>,
+    pub config_path: Option<PathBuf>,
+    pub notification: Option<(String, Instant)>,
 }
 
 impl App {
@@ -145,6 +147,8 @@ impl App {
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             latest_version: None,
             update_receiver: None,
+            config_path: None,
+            notification: None,
         };
         app.check_for_updates();
         app.load_directory();
@@ -198,6 +202,8 @@ impl App {
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             latest_version: None,
             update_receiver: None,
+            config_path: None,
+            notification: None,
         }
     }
 
@@ -466,6 +472,28 @@ impl App {
                 self.favorites_state.select(Some(i));
             }
         }
+    }
+
+    pub fn get_selected_station(&self) -> Option<RadioStation> {
+        let selected_idx = self.radio_state.selected().unwrap_or(0);
+        let mut current_idx = 0;
+
+        for group in &self.filtered_radio_groups {
+            if current_idx == selected_idx {
+                // It's a group header
+                return None;
+            }
+            current_idx += 1;
+
+            if group.is_expanded {
+                if selected_idx < current_idx + group.stations.len() {
+                    let station_idx = selected_idx - current_idx;
+                    return Some(group.stations[station_idx].clone());
+                }
+                current_idx += group.stations.len();
+            }
+        }
+        None
     }
 
     pub fn enter_directory(&mut self) {
@@ -751,6 +779,13 @@ impl App {
     }
 
     pub fn on_tick(&mut self) {
+        // Check notification expiry
+        if let Some((_, time)) = self.notification
+            && time.elapsed() > Duration::from_secs(3)
+        {
+            self.notification = None;
+        }
+
         // Check for updates
         if let Some(rx) = &self.update_receiver {
             match rx.try_recv() {
@@ -909,6 +944,20 @@ impl App {
             }
         }
         self.update_mpris();
+    }
+
+    pub fn save_radio_station(&mut self) {
+        if self.mode == AppMode::Radio
+            && let Some(station) = self.get_selected_station()
+            && let Some(config_path) = &self.config_path
+        {
+            if let Err(e) = crate::radio::add_station_to_config(config_path, &station) {
+                // Ideally show error to user
+                eprintln!("Failed to export station: {}", e);
+            } else {
+                self.notification = Some((format!("Exported: {}", station.name), Instant::now()));
+            }
+        }
     }
 
     pub fn change_volume(&mut self, delta: f32) {
@@ -1181,6 +1230,7 @@ pub fn run_app<B: Backend, E: EventSource>(
                         KeyCode::Char('-') => app.change_volume(-0.05),
                         KeyCode::Left => app.previous_track(),
                         KeyCode::Right => app.next_track(),
+                        KeyCode::Char('x') => app.save_radio_station(),
                         KeyCode::Char(' ') => app.toggle_pause(),
                         KeyCode::Enter => app.enter_directory(),
                         KeyCode::Backspace => app.go_up(),
