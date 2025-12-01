@@ -127,7 +127,9 @@ async fn test_fetch_all_stations() {
 
     std::fs::write(&config_path, config_content).unwrap();
 
-    let groups = fetch_all_stations(Some(config_path), None, true).await.unwrap();
+    let groups = fetch_all_stations(Some(config_path), None, true)
+        .await
+        .unwrap();
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].title, "Test Source");
     assert_eq!(groups[0].stations.len(), 1);
@@ -436,7 +438,9 @@ async fn test_fetch_all_stations_individual() {
     }"#;
     fs::write(&file_path, content).unwrap();
 
-    let groups = fetch_all_stations(Some(file_path), None, false).await.unwrap();
+    let groups = fetch_all_stations(Some(file_path), None, false)
+        .await
+        .unwrap();
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].title, "Individual Stations");
     assert_eq!(groups[0].stations.len(), 1);
