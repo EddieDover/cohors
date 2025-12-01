@@ -1,7 +1,7 @@
 use std::env;
 use std::sync::Mutex;
 
-static ENV_MUTEX: Mutex<()> = Mutex::new(());
+pub static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
 // Helper to run test with modified environment
 pub fn with_xdg_config_home<F>(path: &std::path::Path, f: F)
