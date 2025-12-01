@@ -144,3 +144,91 @@ fn test_add_station_to_config_duplicate() {
 
     assert_eq!(config.individual_stations.len(), 1);
 }
+
+#[test]
+fn test_edit_station_in_config() {
+    let temp = TempDir::new().unwrap();
+    let config_path = temp.path().join("stations.config.json");
+
+    let initial_config = RadioConfig {
+        sources: Vec::new(),
+        individual_stations: vec![IndividualStationConfig {
+            name: "Old Name".to_string(),
+            station_url: "http://old.com".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+        }],
+    };
+    let json = serde_json::to_string(&initial_config).unwrap();
+    fs::write(&config_path, json).unwrap();
+
+    let new_station = RadioStation {
+        name: "New Name".to_string(),
+        url: "http://new.com".to_string(),
+        description: Some("Desc".to_string()),
+        homepage: None,
+        tags: None,
+        last_playing: None,
+    };
+
+    edit_station_in_config(&config_path, "http://old.com", &new_station).unwrap();
+
+    let content = fs::read_to_string(&config_path).unwrap();
+    let config: RadioConfig = serde_json::from_str(&content).unwrap();
+
+    assert_eq!(config.individual_stations.len(), 1);
+    assert_eq!(config.individual_stations[0].name, "New Name");
+    assert_eq!(config.individual_stations[0].station_url, "http://new.com");
+    assert_eq!(config.individual_stations[0].description, Some("Desc".to_string()));
+}
+
+#[test]
+fn test_edit_source_in_config() {
+    let temp = TempDir::new().unwrap();
+    let config_path = temp.path().join("stations.config.json");
+
+    let initial_source = RadioSourceConfig {
+        title: "Old Title".to_string(),
+        json_url: "http://old.com".to_string(),
+        container: None,
+        mapping: StationMapping {
+            station_name: "n".to_string(),
+            station_url: "u".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        },
+    };
+    let initial_config = RadioConfig {
+        sources: vec![initial_source],
+        individual_stations: Vec::new(),
+    };
+    let json = serde_json::to_string(&initial_config).unwrap();
+    fs::write(&config_path, json).unwrap();
+
+    let new_source = RadioSourceConfig {
+        title: "New Title".to_string(),
+        json_url: "http://new.com".to_string(),
+        container: Some("data".to_string()),
+        mapping: StationMapping {
+            station_name: "name".to_string(),
+            station_url: "url".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        },
+    };
+
+    edit_source_in_config(&config_path, "Old Title", &new_source).unwrap();
+
+    let content = fs::read_to_string(&config_path).unwrap();
+    let config: RadioConfig = serde_json::from_str(&content).unwrap();
+
+    assert_eq!(config.sources.len(), 1);
+    assert_eq!(config.sources[0].title, "New Title");
+    assert_eq!(config.sources[0].json_url, "http://new.com");
+    assert_eq!(config.sources[0].container, Some("data".to_string()));
+}
