@@ -57,10 +57,34 @@ The application looks for the configuration file in the following order:
 
 ### Configuration Format
 
-The configuration file is a JSON object containing a list of `sources`. Each source defines where to fetch the data and how to map the JSON fields to Cohors' internal station structure.
+The configuration file is a JSON object containing an optional list of `stations ` and/or `sources`.
+
+Each station defines an individual station you want to list while each source defines where to fetch the data and how to map the JSON fields to Cohors' internal station structure.
+
+Stations support the following fields:
+
+ - `name`: Display name of the station
+ - `station_url`: The URL to stream from
+ - `description` (Optional): A description of the station.
+ - `homepage` (Optional): The station's home page.
+
+Sources support the following fields:
+
+- `title`: Display name for this group of stations in the UI.
+- `json_url`: The URL to fetch the JSON data from.
+- `container` (Optional): If the station list is inside a property of the root JSON object, specify the key here. If the root is an array, omit this field.
+- `mapping`: Maps the API's field names to Cohors' fields. Nested fields can be accessed using dot notation (e.g., `playlists.0.url`).
 
 ```json
 {
+  "stations": [
+    {
+      "name": "My Favorite Station",
+      "station_url": "http://stream.example.com/radio",
+      "description": "Best hits 24/7",
+      "homepage": "http://example.com"
+    }
+  ],
   "sources": [
     {
       "title": "Example Radio Source",
@@ -79,10 +103,6 @@ The configuration file is a JSON object containing a list of `sources`. Each sou
 }
 ```
 
-- `title`: Display name for this group of stations in the UI.
-- `json_url`: The URL to fetch the JSON data from.
-- `container` (Optional): If the station list is inside a property of the root JSON object, specify the key here. If the root is an array, omit this field.
-- `mapping`: Maps the API's field names to Cohors' fields. Nested fields can be accessed using dot notation (e.g., `playlists.0.url`).
 
 ### Example API Response
 
@@ -114,22 +134,4 @@ For the configuration above, the `json_url` (`https://api.example.com/stations.j
 ```
 
 The `container` field is set to `"stations"`, telling Cohors to look inside that property for the list. The `mapping` then connects fields like `name` to `station_name` and `stream_url` to `station_url`.
-
-### Individual Stations
-
-You can also define individual stations directly in the configuration file using the `individualStations` key. This is useful for adding custom streams that aren't part of an API.
-
-```json
-{
-  "individualStations": [
-    {
-      "name": "My Favorite Station",
-      "station_url": "http://stream.example.com/radio",
-      "description": "Best hits 24/7",
-      "homepage": "http://example.com",
-      "tags": "Pop, Rock"
-    }
-  ]
-}
-```
 
