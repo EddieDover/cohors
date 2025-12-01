@@ -66,19 +66,11 @@ jobs:
           cache-on-failure: true
           save-if: true
 
-      - name: Cache tarpaulin
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/cargo-tarpaulin
-          key: ${{ runner.os }}-cargo-tarpaulin-${{ hashFiles('.github/workflows/rust.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-tarpaulin-
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
 
       - name: Install tarpaulin
-        run: |
-          if [ ! -f ~/.cargo/bin/cargo-tarpaulin ]; then
-            cargo install cargo-tarpaulin --locked
-          fi
+        run: cargo binstall cargo-tarpaulin --no-confirm
 
       - name: Generate coverage
         run: |
