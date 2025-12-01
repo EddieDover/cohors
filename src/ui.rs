@@ -1,4 +1,4 @@
-use crate::app::{App, AppMode, LoopMode};
+use crate::app::{AddModalState, App, AppMode, LoopMode};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -462,6 +462,262 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_help {
         draw_help_modal(f);
     }
+
+    if app.add_modal_state.is_some() {
+        draw_add_modal(f, app);
+    }
+}
+
+fn draw_add_modal(f: &mut Frame, app: &App) {
+    if let Some(state) = &app.add_modal_state {
+        let area = centered_rect(60, 85, f.area());
+        f.render_widget(Clear, area);
+        let block = Block::default().title("Add New").borders(Borders::ALL);
+        f.render_widget(block.clone(), area);
+        let inner = block.inner(area);
+
+        match state {
+            AddModalState::Selection => {
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(3), Constraint::Length(3)].as_ref())
+                    .margin(2)
+                    .split(inner);
+
+                let p1 = Paragraph::new("Press 's' to add a Station")
+                    .alignment(ratatui::layout::Alignment::Center);
+                let p2 = Paragraph::new("Press 'r' to add a Radio Source")
+                    .alignment(ratatui::layout::Alignment::Center);
+
+                f.render_widget(p1, chunks[0]);
+                f.render_widget(p2, chunks[1]);
+            }
+            AddModalState::InputStation {
+                name,
+                url,
+                description,
+                homepage,
+                tags,
+                focused_field,
+                ..
+            } => {
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints(
+                        [
+                            Constraint::Length(3), // Name
+                            Constraint::Length(3), // URL
+                            Constraint::Length(3), // Desc
+                            Constraint::Length(3), // Home
+                            Constraint::Length(3), // Tags
+                            Constraint::Min(0),
+                        ]
+                        .as_ref(),
+                    )
+                    .margin(1)
+                    .split(inner);
+
+                let fields = [
+                    ("Name", name),
+                    ("URL", url),
+                    ("Description", description),
+                    ("Homepage", homepage),
+                    ("Tags", tags),
+                ];
+
+                for (i, (label, value)) in fields.iter().enumerate() {
+                    let style = if *focused_field == i {
+                        Style::default().fg(Color::Yellow)
+                    } else {
+                        Style::default()
+                    };
+                    let p = Paragraph::new(value.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(*label)
+                            .style(style),
+                    );
+                    f.render_widget(p, chunks[i]);
+                }
+
+                let help = Paragraph::new("Enter: Save | Esc: Cancel | Tab: Next Field")
+                    .alignment(ratatui::layout::Alignment::Center)
+                    .style(Style::default().fg(Color::Gray));
+                f.render_widget(help, chunks[5]);
+            }
+            AddModalState::InputSource {
+                title,
+                json_url,
+                container,
+                map_name,
+                map_url,
+                map_desc,
+                map_home,
+                map_tags,
+                focused_field,
+                ..
+            } => {
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints(
+                        [
+                            Constraint::Length(3), // Title
+                            Constraint::Length(3), // JSON URL
+                            Constraint::Length(3), // Container
+                            Constraint::Length(3), // Mapping Row 1
+                            Constraint::Length(3), // Mapping Row 2
+                            Constraint::Length(3), // Mapping Row 3
+                            Constraint::Min(0),    // Help
+                        ]
+                        .as_ref(),
+                    )
+                    .margin(1)
+                    .split(inner);
+
+                // Row 1: Title
+                let style = if *focused_field == 0 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                f.render_widget(
+                    Paragraph::new(title.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Title")
+                            .style(style),
+                    ),
+                    chunks[0],
+                );
+
+                // Row 2: JSON URL
+                let style = if *focused_field == 1 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                f.render_widget(
+                    Paragraph::new(json_url.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("JSON URL")
+                            .style(style),
+                    ),
+                    chunks[1],
+                );
+
+                // Row 3: Container
+                let style = if *focused_field == 2 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                f.render_widget(
+                    Paragraph::new(container.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Container (Optional)")
+                            .style(style),
+                    ),
+                    chunks[2],
+                );
+
+                // Row 4: Map Name | Map URL
+                let row4 = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .split(chunks[3]);
+
+                let style = if *focused_field == 3 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                f.render_widget(
+                    Paragraph::new(map_name.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Map: Name")
+                            .style(style),
+                    ),
+                    row4[0],
+                );
+
+                let style = if *focused_field == 4 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                f.render_widget(
+                    Paragraph::new(map_url.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Map: URL")
+                            .style(style),
+                    ),
+                    row4[1],
+                );
+
+                // Row 5: Map Desc | Map Home
+                let row5 = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .split(chunks[4]);
+
+                let style = if *focused_field == 5 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                f.render_widget(
+                    Paragraph::new(map_desc.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Map: Desc")
+                            .style(style),
+                    ),
+                    row5[0],
+                );
+
+                let style = if *focused_field == 6 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                f.render_widget(
+                    Paragraph::new(map_home.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Map: Home")
+                            .style(style),
+                    ),
+                    row5[1],
+                );
+
+                // Row 6: Map Tags
+                let style = if *focused_field == 7 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                f.render_widget(
+                    Paragraph::new(map_tags.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Map: Tags")
+                            .style(style),
+                    ),
+                    chunks[5],
+                );
+
+                // Help
+                let help = Paragraph::new("Enter: Save | Esc: Cancel | Tab: Next Field")
+                    .alignment(ratatui::layout::Alignment::Center)
+                    .style(Style::default().fg(Color::Gray));
+                f.render_widget(help, chunks[6]);
+            }
+        }
+    }
 }
 
 fn draw_help_modal(f: &mut Frame) {
@@ -542,6 +798,7 @@ fn draw_help_modal(f: &mut Frame) {
         Row::new(vec![Cell::from("h"), Cell::from("Toggle Hidden")]),
         Row::new(vec![Cell::from("f"), Cell::from("Toggle Favorite")]),
         Row::new(vec![Cell::from("x"), Cell::from("Export Station")]),
+        Row::new(vec![Cell::from("a"), Cell::from("Add Station/Source")]),
     ];
 
     let table_right = Table::new(

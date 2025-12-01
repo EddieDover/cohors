@@ -39,6 +39,31 @@ pub enum LoopMode {
     All,
 }
 
+pub enum AddModalState {
+    Selection,
+    InputStation {
+        name: String,
+        url: String,
+        description: String,
+        homepage: String,
+        tags: String,
+        focused_field: usize,
+        original_url: Option<String>,
+    },
+    InputSource {
+        title: String,
+        json_url: String,
+        container: String,
+        map_name: String,
+        map_url: String,
+        map_desc: String,
+        map_home: String,
+        map_tags: String,
+        focused_field: usize,
+        original_title: Option<String>,
+    },
+}
+
 pub struct App {
     pub mode: AppMode,
     pub favorites: Favorites,
@@ -48,6 +73,7 @@ pub struct App {
     // Radio
     pub radio_groups: Vec<RadioGroup>,
     pub radio_state: ListState,
+    pub station_receiver: Option<std::sync::mpsc::Receiver<Result<Vec<RadioGroup>, String>>>,
     // Favorites
     pub favorites_state: ListState,
     // Audio
@@ -86,6 +112,7 @@ pub struct App {
     pub update_receiver: Option<std::sync::mpsc::Receiver<Option<String>>>,
     pub config_path: Option<PathBuf>,
     pub notification: Option<(String, Instant)>,
+    pub add_modal_state: Option<AddModalState>,
 }
 
 impl App {
@@ -112,6 +139,7 @@ impl App {
             state: ListState::default(),
             radio_groups: Vec::new(),
             radio_state: ListState::default(),
+            station_receiver: None,
             favorites_state: ListState::default(),
             _stream: stream,
             _stream_handle: stream_handle,
@@ -149,6 +177,7 @@ impl App {
             update_receiver: None,
             config_path: None,
             notification: None,
+            add_modal_state: None,
         };
         app.check_for_updates();
         app.load_directory();
@@ -167,6 +196,7 @@ impl App {
             state: ListState::default(),
             radio_groups: Vec::new(),
             radio_state: ListState::default(),
+            station_receiver: None,
             favorites_state: ListState::default(),
             _stream: None,
             _stream_handle: None,
@@ -204,6 +234,7 @@ impl App {
             update_receiver: None,
             config_path: None,
             notification: None,
+            add_modal_state: None,
         }
     }
 
@@ -800,6 +831,30 @@ impl App {
             }
         }
 
+        // Check for station reload
+        if let Some(rx) = &self.station_receiver {
+            match rx.try_recv() {
+                Ok(result) => {
+                    self.station_receiver = None;
+                    match result {
+                        Ok(groups) => {
+                            self.radio_groups = groups;
+                            self.notification =
+                                Some(("Stations reloaded".to_string(), Instant::now()));
+                            self.update_search_results();
+                        }
+                        Err(e) => {
+                            self.last_error = Some(format!("Failed to reload stations: {}", e));
+                        }
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.station_receiver = None;
+                }
+            }
+        }
+
         let source_result = self
             .source_receiver
             .as_ref()
@@ -976,6 +1031,331 @@ impl App {
         };
     }
 
+    pub fn open_add_modal(&mut self) {
+        self.add_modal_state = Some(AddModalState::Selection);
+    }
+
+    pub fn handle_add_modal_input(&mut self, key: KeyCode) {
+        if let Some(state) = &mut self.add_modal_state {
+            match state {
+                AddModalState::Selection => match key {
+                    KeyCode::Char('s') => {
+                        *state = AddModalState::InputStation {
+                            name: String::new(),
+                            url: String::new(),
+                            description: String::new(),
+                            homepage: String::new(),
+                            tags: String::new(),
+                            focused_field: 0,
+                            original_url: None,
+                        };
+                    }
+                    KeyCode::Char('r') => {
+                        *state = AddModalState::InputSource {
+                            title: String::new(),
+                            json_url: String::new(),
+                            container: String::new(),
+                            map_name: String::new(),
+                            map_url: String::new(),
+                            map_desc: String::new(),
+                            map_home: String::new(),
+                            map_tags: String::new(),
+                            focused_field: 0,
+                            original_title: None,
+                        };
+                    }
+                    KeyCode::Esc => self.add_modal_state = None,
+                    _ => {}
+                },
+                AddModalState::InputStation {
+                    name,
+                    url,
+                    description,
+                    homepage,
+                    tags,
+                    focused_field,
+                    original_url,
+                } => match key {
+                    KeyCode::Esc => self.add_modal_state = None,
+                    KeyCode::Tab | KeyCode::Down => {
+                        *focused_field = (*focused_field + 1) % 5;
+                    }
+                    KeyCode::BackTab | KeyCode::Up => {
+                        *focused_field = (*focused_field + 4) % 5;
+                    }
+                    KeyCode::Enter => {
+                        if name.trim().is_empty() || url.trim().is_empty() {
+                            self.notification =
+                                Some(("Name and URL are required".to_string(), Instant::now()));
+                            return;
+                        }
+                        // Save
+                        let station = crate::radio::RadioStation {
+                            name: name.clone(),
+                            url: url.clone(),
+                            description: if description.is_empty() {
+                                None
+                            } else {
+                                Some(description.clone())
+                            },
+                            homepage: if homepage.is_empty() {
+                                None
+                            } else {
+                                Some(homepage.clone())
+                            },
+                            tags: if tags.is_empty() {
+                                None
+                            } else {
+                                Some(tags.clone())
+                            },
+                            last_playing: None,
+                        };
+
+                        if let Some(config_path) = &self.config_path {
+                            let result = if let Some(old_url) = original_url {
+                                crate::radio::edit_station_in_config(config_path, old_url, &station)
+                            } else {
+                                crate::radio::add_station_to_config(config_path, &station)
+                            };
+
+                            if let Err(e) = result {
+                                self.notification = Some((format!("Error: {}", e), Instant::now()));
+                            } else {
+                                self.notification =
+                                    Some((format!("Saved: {}", station.name), Instant::now()));
+                                self.add_modal_state = None;
+                                self.reload_stations();
+                            }
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        let target = match *focused_field {
+                            0 => name,
+                            1 => url,
+                            2 => description,
+                            3 => homepage,
+                            4 => tags,
+                            _ => return,
+                        };
+                        target.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        let target = match *focused_field {
+                            0 => name,
+                            1 => url,
+                            2 => description,
+                            3 => homepage,
+                            4 => tags,
+                            _ => return,
+                        };
+                        target.pop();
+                    }
+                    _ => {}
+                },
+                AddModalState::InputSource {
+                    title,
+                    json_url,
+                    container,
+                    map_name,
+                    map_url,
+                    map_desc,
+                    map_home,
+                    map_tags,
+                    focused_field,
+                    original_title,
+                } => match key {
+                    KeyCode::Esc => self.add_modal_state = None,
+                    KeyCode::Tab | KeyCode::Down => {
+                        *focused_field = (*focused_field + 1) % 8;
+                    }
+                    KeyCode::BackTab | KeyCode::Up => {
+                        *focused_field = (*focused_field + 7) % 8;
+                    }
+                    KeyCode::Enter => {
+                        if title.trim().is_empty()
+                            || json_url.trim().is_empty()
+                            || map_name.trim().is_empty()
+                            || map_url.trim().is_empty()
+                        {
+                            self.notification = Some((
+                                "Title, JSON URL, Name Map, and URL Map are required".to_string(),
+                                Instant::now(),
+                            ));
+                            return;
+                        }
+                        // Save
+                        let source = crate::radio::RadioSourceConfig {
+                            title: title.clone(),
+                            json_url: json_url.clone(),
+                            container: if container.is_empty() {
+                                None
+                            } else {
+                                Some(container.clone())
+                            },
+                            mapping: crate::radio::StationMapping {
+                                station_name: map_name.clone(),
+                                station_url: map_url.clone(),
+                                description: if map_desc.is_empty() {
+                                    None
+                                } else {
+                                    Some(map_desc.clone())
+                                },
+                                homepage: if map_home.is_empty() {
+                                    None
+                                } else {
+                                    Some(map_home.clone())
+                                },
+                                tags: if map_tags.is_empty() {
+                                    None
+                                } else {
+                                    Some(map_tags.clone())
+                                },
+                                last_playing: None,
+                            },
+                        };
+
+                        if let Some(config_path) = &self.config_path {
+                            let result = if let Some(old_title) = original_title {
+                                crate::radio::edit_source_in_config(config_path, old_title, &source)
+                            } else {
+                                crate::radio::add_source_to_config(config_path, &source)
+                            };
+
+                            if let Err(e) = result {
+                                self.notification = Some((format!("Error: {}", e), Instant::now()));
+                            } else {
+                                self.notification = Some((
+                                    format!("Saved Source: {}", source.title),
+                                    Instant::now(),
+                                ));
+                                // Invalidate cache for this source to ensure fresh fetch
+                                crate::radio::invalidate_source_cache(&source.title, None);
+
+                                self.add_modal_state = None;
+                                self.reload_stations();
+                            }
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        let target = match *focused_field {
+                            0 => title,
+                            1 => json_url,
+                            2 => container,
+                            3 => map_name,
+                            4 => map_url,
+                            5 => map_desc,
+                            6 => map_home,
+                            7 => map_tags,
+                            _ => return,
+                        };
+                        target.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        let target = match *focused_field {
+                            0 => title,
+                            1 => json_url,
+                            2 => container,
+                            3 => map_name,
+                            4 => map_url,
+                            5 => map_desc,
+                            6 => map_home,
+                            7 => map_tags,
+                            _ => return,
+                        };
+                        target.pop();
+                    }
+                    _ => {}
+                },
+            }
+        }
+    }
+
+    pub fn reload_stations(&mut self) {
+        if let Some(config_path) = &self.config_path {
+            let config_path = config_path.clone();
+            let (tx, rx) = std::sync::mpsc::channel();
+            self.station_receiver = Some(rx);
+
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let result = rt.block_on(crate::radio::fetch_all_stations(
+                    Some(config_path),
+                    None,
+                    false,
+                    true,
+                ));
+                let _ = tx.send(result.map_err(|e| e.to_string()));
+            });
+        }
+    }
+
+    pub fn open_edit_modal(&mut self) {
+        if self.mode != AppMode::Radio {
+            return;
+        }
+
+        let selected_idx = self.radio_state.selected().unwrap_or(0);
+        let mut current_idx = 0;
+
+        for group in &self.filtered_radio_groups {
+            // Check if the group header is selected
+            if current_idx == selected_idx {
+                if group.title != "Custom Stations"
+                    && let Some(config_path) = &self.config_path
+                    && let Ok(config) =
+                        crate::radio::load_config(Some(config_path.clone()), None, None)
+                    && let Some(source) = config.sources.iter().find(|s| s.title == group.title)
+                {
+                    self.add_modal_state = Some(AddModalState::InputSource {
+                        title: source.title.clone(),
+                        json_url: source.json_url.clone(),
+                        container: source.container.clone().unwrap_or_default(),
+                        map_name: source.mapping.station_name.clone(),
+                        map_url: source.mapping.station_url.clone(),
+                        map_desc: source.mapping.description.clone().unwrap_or_default(),
+                        map_home: source.mapping.homepage.clone().unwrap_or_default(),
+                        map_tags: source.mapping.tags.clone().unwrap_or_default(),
+                        focused_field: 0,
+                        original_title: Some(source.title.clone()),
+                    });
+                }
+                return;
+            }
+            current_idx += 1;
+
+            if group.is_expanded {
+                // Check if a station within this group is selected
+                if selected_idx < current_idx + group.stations.len() {
+                    let station_idx = selected_idx - current_idx;
+                    let station = &group.stations[station_idx];
+
+                    // Only allow editing if it's in the "Custom Stations" group
+                    if group.title == "Custom Stations"
+                        && let Some(config_path) = &self.config_path
+                        && let Ok(config) =
+                            crate::radio::load_config(Some(config_path.clone()), None, None)
+                        && let Some(s) = config
+                            .individual_stations
+                            .iter()
+                            .find(|s| s.station_url == station.url)
+                    {
+                        self.add_modal_state = Some(AddModalState::InputStation {
+                            name: s.name.clone(),
+                            url: s.station_url.clone(),
+                            description: s.description.clone().unwrap_or_default(),
+                            homepage: s.homepage.clone().unwrap_or_default(),
+                            tags: s.tags.clone().unwrap_or_default(),
+                            focused_field: 0,
+                            original_url: Some(s.station_url.clone()),
+                        });
+                    }
+                    return;
+                }
+                current_idx += group.stations.len();
+            }
+        }
+    }
+
     pub fn toggle_favorite(&mut self) {
         match self.mode {
             AppMode::FileSystem => {
@@ -1088,6 +1468,7 @@ struct HttpStream<R> {
     inner: R,
     buffer: Vec<u8>,
     pos: u64,
+    dropped_bytes: u64,
 }
 
 impl<R: io::Read> HttpStream<R> {
@@ -1096,6 +1477,7 @@ impl<R: io::Read> HttpStream<R> {
             inner,
             buffer: Vec::new(),
             pos: 0,
+            dropped_bytes: 0,
         }
     }
 }
@@ -1113,10 +1495,16 @@ impl<R: io::Read> io::Read for HttpStream<R> {
 
         let n = self.inner.read(buf)?;
         if n > 0 {
-            if self.buffer.len() < 128 * 1024 {
-                let space = 128 * 1024 - self.buffer.len();
+            // Increase buffer to 2MB to handle longer probes
+            if self.buffer.len() < 2 * 1024 * 1024 {
+                let space = 2 * 1024 * 1024 - self.buffer.len();
                 let to_buffer = std::cmp::min(n, space);
                 self.buffer.extend_from_slice(&buf[0..to_buffer]);
+                if n > space {
+                    self.dropped_bytes += (n - space) as u64;
+                }
+            } else {
+                self.dropped_bytes += n as u64;
             }
             self.pos += n as u64;
         }
@@ -1135,6 +1523,9 @@ impl<R: io::Read> io::Seek for HttpStream<R> {
         };
 
         if new_pos <= self.buffer.len() as u64 {
+            if self.dropped_bytes > 0 {
+                return Err(io::Error::other("Cannot seek: buffer overflowed"));
+            }
             self.pos = new_pos;
             Ok(new_pos)
         } else if new_pos == self.pos {
@@ -1179,7 +1570,9 @@ pub fn run_app<B: Backend, E: EventSource>(
         if events.poll(Duration::from_millis(50))? {
             let event = events.read()?;
             if let Event::Key(key) = event {
-                if app.is_searching {
+                if app.add_modal_state.is_some() {
+                    app.handle_add_modal_input(key.code);
+                } else if app.is_searching {
                     match key.code {
                         KeyCode::Esc => app.cancel_search(),
                         KeyCode::Enter => app.submit_search(),
@@ -1231,6 +1624,8 @@ pub fn run_app<B: Backend, E: EventSource>(
                         KeyCode::Left => app.previous_track(),
                         KeyCode::Right => app.next_track(),
                         KeyCode::Char('x') => app.save_radio_station(),
+                        KeyCode::Char('a') => app.open_add_modal(),
+                        KeyCode::Char('e') => app.open_edit_modal(),
                         KeyCode::Char(' ') => app.toggle_pause(),
                         KeyCode::Enter => app.enter_directory(),
                         KeyCode::Backspace => app.go_up(),
@@ -1244,5 +1639,7 @@ pub fn run_app<B: Backend, E: EventSource>(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_edit;
 #[cfg(test)]
 mod tests_mpris_logic;

@@ -127,7 +127,7 @@ async fn test_fetch_all_stations() {
 
     std::fs::write(&config_path, config_content).unwrap();
 
-    let groups = fetch_all_stations(Some(config_path), None, true)
+    let groups = fetch_all_stations(Some(config_path), None, true, true)
         .await
         .unwrap();
     assert_eq!(groups.len(), 1);
@@ -163,7 +163,7 @@ async fn test_fetch_stations_caching() {
     };
 
     // First fetch: Should hit web (mock) and save to cache
-    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false)
+    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false, true)
         .await
         .unwrap();
     assert_eq!(stations.len(), 1);
@@ -181,7 +181,7 @@ async fn test_fetch_stations_caching() {
     fs::write(&cache_path, cached_content).unwrap();
 
     // Second fetch: Should hit cache
-    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false)
+    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false, true)
         .await
         .unwrap();
     assert_eq!(stations.len(), 1);
@@ -352,7 +352,7 @@ async fn test_fetch_stations_error() {
         },
     };
 
-    let result = fetch_stations(&source, None, false).await;
+    let result = fetch_stations(&source, None, false, true).await;
     assert!(result.is_err());
 }
 
@@ -380,7 +380,7 @@ async fn test_fetch_stations_invalid_json() {
         },
     };
 
-    let result = fetch_stations(&source, None, false).await;
+    let result = fetch_stations(&source, None, false, true).await;
     assert!(result.is_err());
 }
 
@@ -388,7 +388,7 @@ async fn test_fetch_stations_invalid_json() {
 #[ignore]
 async fn test_fetch_real_stations() {
     // Ensure we can find the config file in the current directory
-    let groups = fetch_all_stations(None, None, false).await.unwrap();
+    let groups = fetch_all_stations(None, None, false, true).await.unwrap();
     println!("Fetched {} groups", groups.len());
     for group in groups {
         println!("Group: {} ({} stations)", group.title, group.stations.len());
@@ -427,7 +427,7 @@ async fn test_fetch_all_stations_error_handling() {
     std::fs::write(&config_path, config_content).unwrap();
 
     // Should not fail, but return empty list (or list with other successful sources)
-    let groups = fetch_all_stations(Some(config_path), None, true)
+    let groups = fetch_all_stations(Some(config_path), None, true, true)
         .await
         .unwrap();
     assert_eq!(groups.len(), 0);
@@ -464,7 +464,7 @@ async fn test_fetch_stations_cache_invalidation() {
     };
 
     // Fetch with invalidate_cache = true
-    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), true)
+    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), true, true)
         .await
         .unwrap();
 
@@ -517,7 +517,7 @@ async fn test_fetch_stations_cache_expiry() {
     };
 
     // Fetch should ignore cache because it's old
-    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false)
+    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false, true)
         .await
         .unwrap();
 
@@ -568,7 +568,7 @@ async fn test_fetch_all_stations_individual() {
     }"#;
     fs::write(&file_path, content).unwrap();
 
-    let groups = fetch_all_stations(Some(file_path), None, false)
+    let groups = fetch_all_stations(Some(file_path), None, false, true)
         .await
         .unwrap();
     assert_eq!(groups.len(), 1);
@@ -639,7 +639,7 @@ async fn test_fetch_stations_cache_future_timestamp() {
     };
 
     // Fetch should use cache because it's "fresh" (future timestamp)
-    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false)
+    let stations = fetch_stations(&source, Some(temp_home.path().to_path_buf()), false, true)
         .await
         .unwrap();
 
@@ -677,7 +677,7 @@ async fn test_fetch_stations_no_home_dir() {
         std::env::remove_var("HOME");
     }
 
-    let stations = fetch_stations(&source, None, false).await.unwrap();
+    let stations = fetch_stations(&source, None, false, true).await.unwrap();
     assert_eq!(stations.len(), 1);
 
     // Restore HOME if needed? The mutex protects other tests.
@@ -708,7 +708,11 @@ async fn test_fetch_stations_invalid_container() {
             last_playing: None,
         },
     };
-    assert!(fetch_stations(&source_missing, None, false).await.is_err());
+    assert!(
+        fetch_stations(&source_missing, None, false, true)
+            .await
+            .is_err()
+    );
 
     // Case 2: Container specified but not an array
     let _m2 = server
@@ -732,7 +736,7 @@ async fn test_fetch_stations_invalid_container() {
         },
     };
     assert!(
-        fetch_stations(&source_not_array, None, false)
+        fetch_stations(&source_not_array, None, false, true)
             .await
             .is_err()
     );
@@ -758,5 +762,51 @@ async fn test_fetch_stations_invalid_container() {
             last_playing: None,
         },
     };
-    assert!(fetch_stations(&source_root, None, false).await.is_err());
+    assert!(
+        fetch_stations(&source_root, None, false, true)
+            .await
+            .is_err()
+    );
+}
+
+#[test]
+fn test_add_source_to_config() {
+    let temp_dir = tempdir().unwrap();
+    let config_path = temp_dir.path().join("stations.config.json");
+
+    let source = RadioSourceConfig {
+        title: "New Source".to_string(),
+        json_url: "http://example.com/json".to_string(),
+        container: None,
+        mapping: StationMapping {
+            station_name: "name".to_string(),
+            station_url: "url".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        },
+    };
+
+    // Add to new file
+    add_source_to_config(&config_path, &source).unwrap();
+    let content = std::fs::read_to_string(&config_path).unwrap();
+    let config: RadioConfig = serde_json::from_str(&content).unwrap();
+    assert_eq!(config.sources.len(), 1);
+    assert_eq!(config.sources[0].title, "New Source");
+
+    // Add duplicate (should be ignored)
+    add_source_to_config(&config_path, &source).unwrap();
+    let content = std::fs::read_to_string(&config_path).unwrap();
+    let config: RadioConfig = serde_json::from_str(&content).unwrap();
+    assert_eq!(config.sources.len(), 1);
+
+    // Add another source
+    let mut source2 = source.clone();
+    source2.title = "Another Source".to_string();
+    source2.json_url = "http://example.com/json2".to_string();
+    add_source_to_config(&config_path, &source2).unwrap();
+    let content = std::fs::read_to_string(&config_path).unwrap();
+    let config: RadioConfig = serde_json::from_str(&content).unwrap();
+    assert_eq!(config.sources.len(), 2);
 }
