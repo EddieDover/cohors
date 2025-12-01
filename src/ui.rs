@@ -463,12 +463,27 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 }
 
 fn draw_help_modal(f: &mut Frame) {
-    let area = centered_rect(60, 60, f.area());
-    let block = Block::default().title("Help").borders(Borders::ALL);
+    let area = centered_rect(80, 90, f.area());
+    f.render_widget(Clear, area); // Clear background
 
-    let rows = vec![
+    let block = Block::default().title("Help").borders(Borders::ALL);
+    f.render_widget(block.clone(), area);
+
+    let inner_area = block.inner(area);
+
+    let vertical_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(7)].as_ref())
+        .margin(1)
+        .split(inner_area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+        .split(vertical_chunks[0]);
+
+    let rows_left = vec![
         // General
-        Row::new(vec![Cell::from("")]),
         Row::new(vec![Cell::from("General"), Cell::from("")]).style(
             Style::default()
                 .add_modifier(Modifier::BOLD)
@@ -476,15 +491,36 @@ fn draw_help_modal(f: &mut Frame) {
         ),
         Row::new(vec![Cell::from("?"), Cell::from("Toggle Help")]),
         Row::new(vec![Cell::from("q"), Cell::from("Quit")]),
-        Row::new(vec![
-            Cell::from("TAB"),
-            Cell::from("Switch Mode (Files/Radio/Favs)"),
-        ]),
+        Row::new(vec![Cell::from("TAB"), Cell::from("Switch Mode")]),
         Row::new(vec![Cell::from("/"), Cell::from("Search")]),
+        // Playback
+        Row::new(vec![Cell::from("")]),
+        Row::new(vec![Cell::from("Playback"), Cell::from("")]).style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Yellow),
+        ),
         Row::new(vec![Cell::from("Space"), Cell::from("Play/Pause")]),
         Row::new(vec![Cell::from("+/-"), Cell::from("Volume Up/Down")]),
+        Row::new(vec![Cell::from("l"), Cell::from("Toggle Loop")]),
+        Row::new(vec![Cell::from("← / →"), Cell::from("Prev / Next Track")]),
+    ];
+
+    let table_left = Table::new(
+        rows_left,
+        [Constraint::Percentage(30), Constraint::Percentage(70)],
+    )
+    .header(
+        Row::new(vec!["Key", "Action"])
+            .style(Style::default().fg(Color::Yellow))
+            .bottom_margin(1),
+    )
+    .column_spacing(1);
+
+    f.render_widget(table_left, chunks[0]);
+
+    let rows_right = vec![
         // Navigation
-        Row::new(vec![Cell::from("")]),
         Row::new(vec![Cell::from("Navigation"), Cell::from("")]).style(
             Style::default()
                 .add_modifier(Modifier::BOLD)
@@ -492,15 +528,8 @@ fn draw_help_modal(f: &mut Frame) {
         ),
         Row::new(vec![Cell::from("j / ↓"), Cell::from("Down")]),
         Row::new(vec![Cell::from("k / ↑"), Cell::from("Up")]),
-        Row::new(vec![
-            Cell::from("Enter"),
-            Cell::from("Play / Enter Directory"),
-        ]),
-        Row::new(vec![Cell::from("Backspace"), Cell::from("Go Up Directory")]),
-        Row::new(vec![
-            Cell::from("← / →"),
-            Cell::from("Previous / Next Track"),
-        ]),
+        Row::new(vec![Cell::from("Enter"), Cell::from("Play / Enter Dir")]),
+        Row::new(vec![Cell::from("Bksp"), Cell::from("Go Up Dir")]),
         // Files
         Row::new(vec![Cell::from("")]),
         Row::new(vec![Cell::from("Files"), Cell::from("")]).style(
@@ -508,9 +537,24 @@ fn draw_help_modal(f: &mut Frame) {
                 .add_modifier(Modifier::BOLD)
                 .fg(Color::Yellow),
         ),
-        Row::new(vec![Cell::from("h"), Cell::from("Toggle Hidden Files")]),
-        Row::new(vec![Cell::from("l"), Cell::from("Toggle Loop Mode")]),
+        Row::new(vec![Cell::from("h"), Cell::from("Toggle Hidden")]),
         Row::new(vec![Cell::from("f"), Cell::from("Toggle Favorite")]),
+    ];
+
+    let table_right = Table::new(
+        rows_right,
+        [Constraint::Percentage(30), Constraint::Percentage(70)],
+    )
+    .header(
+        Row::new(vec!["Key", "Action"])
+            .style(Style::default().fg(Color::Yellow))
+            .bottom_margin(1),
+    )
+    .column_spacing(1);
+
+    f.render_widget(table_right, chunks[1]);
+
+    let rows_about = vec![
         // About
         Row::new(vec![Cell::from("")]),
         Row::new(vec![Cell::from("About"), Cell::from("")]).style(
@@ -530,26 +574,15 @@ fn draw_help_modal(f: &mut Frame) {
             Cell::from("Repo"),
             Cell::from(env!("CARGO_PKG_REPOSITORY")),
         ]),
-        Row::new(vec![
-            Cell::from("Changelog"),
-            Cell::from("https://github.com/EddieDover/cohors/blob/master/CHANGELOG.md"),
-        ]),
     ];
 
-    let table = Table::new(
-        rows,
-        [Constraint::Percentage(30), Constraint::Percentage(70)],
-    )
-    .block(block)
-    .header(
-        Row::new(vec!["Key", "Action"])
-            .style(Style::default().fg(Color::Yellow))
-            .bottom_margin(1),
+    let table_about = Table::new(
+        rows_about,
+        [Constraint::Percentage(15), Constraint::Percentage(85)],
     )
     .column_spacing(1);
 
-    f.render_widget(Clear, area); // Clear background
-    f.render_widget(table, area);
+    f.render_widget(table_about, vertical_chunks[1]);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
