@@ -694,6 +694,7 @@ fn test_favorites() {
             stations: vec![station.clone()],
             is_expanded: true,
         });
+        app.update_search_results();
         app.radio_state.select(Some(1)); // 0 is group header, 1 is station
 
         app.toggle_favorite();
@@ -1063,6 +1064,7 @@ fn test_radio_indexing() {
     };
     app.radio_groups.push(group1);
     app.radio_groups.push(group2);
+    app.update_search_results();
 
     // Index 0: Group 1 Header
     assert!(app.get_radio_station_at_index(0).is_none());

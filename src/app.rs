@@ -316,7 +316,7 @@ impl App {
 
     pub fn get_radio_station_at_index(&self, index: usize) -> Option<&RadioStation> {
         let mut current_idx = 0;
-        for group in &self.radio_groups {
+        for group in &self.filtered_radio_groups {
             if current_idx == index {
                 return None; // It's a group header
             }
