@@ -1075,3 +1075,102 @@ fn test_check_for_updates_integration() {
     assert_eq!(app.latest_version, None);
     assert!(app.update_receiver.is_none());
 }
+
+#[test]
+fn test_get_selected_station() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Radio;
+
+    let station = crate::radio::RadioStation {
+        name: "Test Station".to_string(),
+        url: "http://test.com".to_string(),
+        description: None,
+        homepage: None,
+        tags: None,
+        last_playing: None,
+    };
+
+    let group = crate::radio::RadioGroup {
+        title: "Test Group".to_string(),
+        stations: vec![station.clone()],
+        is_expanded: true,
+    };
+
+    app.radio_groups.push(group);
+    app.update_search_results();
+
+    // Select group header
+    app.radio_state.select(Some(0));
+    assert!(app.get_selected_station().is_none());
+
+    // Select station
+    app.radio_state.select(Some(1));
+    let selected = app.get_selected_station();
+    assert!(selected.is_some());
+    assert_eq!(selected.unwrap().name, "Test Station");
+}
+
+#[test]
+fn test_save_radio_station() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Radio;
+
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_path = temp.path().join("stations.config.json");
+    app.config_path = Some(config_path.clone());
+
+    let station = crate::radio::RadioStation {
+        name: "Test Station".to_string(),
+        url: "http://test.com".to_string(),
+        description: None,
+        homepage: None,
+        tags: None,
+        last_playing: None,
+    };
+
+    let group = crate::radio::RadioGroup {
+        title: "Test Group".to_string(),
+        stations: vec![station.clone()],
+        is_expanded: true,
+    };
+
+    app.radio_groups.push(group);
+    app.update_search_results();
+
+    // Select station
+    app.radio_state.select(Some(1));
+
+    app.save_radio_station();
+
+    assert!(config_path.exists());
+    assert!(app.notification.is_some());
+    assert!(app.notification.unwrap().0.contains("Exported"));
+}
+
+#[test]
+fn test_save_radio_station_wrong_mode() {
+    let mut app = App::new_test();
+    app.mode = AppMode::FileSystem;
+
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_path = temp.path().join("stations.config.json");
+    app.config_path = Some(config_path.clone());
+
+    app.save_radio_station();
+
+    assert!(!config_path.exists());
+    assert!(app.notification.is_none());
+}
+
+#[test]
+fn test_notification_expiry() {
+    let mut app = App::new_test();
+    app.notification = Some((
+        "Test".to_string(),
+        std::time::Instant::now() - std::time::Duration::from_secs(4),
+    ));
+
+    app.on_tick();
+
+    assert!(app.notification.is_none());
+}

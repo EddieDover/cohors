@@ -31,6 +31,7 @@ I'm happy to hear your feedback and feature requests! I'm also very open to PRs 
 | `←` | Previous Track |
 | `l` | Toggle Loop Mode (Off / Track/ Folder) |
 | `h` | Toggle hidden files in File View Mode |
+| `x` | Export selected radio station to config |
 
 ## Command Line Arguments
 
@@ -67,6 +68,8 @@ Stations support the following fields:
  - `station_url`: The URL to stream from
  - `description` (Optional): A description of the station.
  - `homepage` (Optional): The station's home page.
+
+*Radio  stations can be export to your individual station list by pressing `x`. This is useful if you're using a JSON link  that could have rotating results based on properties.*
 
 Sources support the following fields:
 

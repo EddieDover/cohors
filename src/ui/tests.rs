@@ -6,6 +6,28 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 #[test]
+fn test_ui_draw_notification() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    app.notification = Some(("Test Notification".to_string(), Instant::now()));
+
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    // Check if notification text is present in the buffer
+    let mut found = false;
+    for cell in buffer.content.iter() {
+        if cell.symbol() == "T" {
+            // Start of "Test Notification"
+            found = true;
+            break;
+        }
+    }
+    assert!(found, "Notification text not found in buffer");
+}
+
+#[test]
 fn test_ui_draw_file_list() {
     let backend = TestBackend::new(100, 50);
     let mut terminal = Terminal::new(backend).unwrap();

@@ -139,6 +139,10 @@ fn main() -> Result<()> {
     println!("Loading radio stations...");
     let rt = tokio::runtime::Runtime::new()?;
     let station_file = args.station_file.map(PathBuf::from);
+
+    // Resolve config path
+    app.config_path = Some(radio::resolve_config_path(station_file.clone(), None, None));
+
     match rt.block_on(radio::fetch_all_stations(
         station_file,
         None,
