@@ -139,6 +139,7 @@ fn main() -> Result<()> {
     let station_file = args.station_file.map(PathBuf::from);
     match rt.block_on(radio::fetch_all_stations(
         station_file,
+        None,
         args.invalidate_cache,
     )) {
         Ok(groups) => {
