@@ -72,6 +72,9 @@ jobs:
       - name: Install tarpaulin
         run: cargo binstall cargo-tarpaulin --no-confirm
 
+      - name: Verify tarpaulin path
+        run: export PATH="$HOME/.cargo/bin:$PATH"
+
       - name: Generate coverage
         run: |
           cargo tarpaulin --verbose --workspace --all-features --timeout 120 \
