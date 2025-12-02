@@ -385,17 +385,6 @@ async fn test_fetch_stations_invalid_json() {
 }
 
 #[tokio::test]
-#[ignore]
-async fn test_fetch_real_stations() {
-    // Ensure we can find the config file in the current directory
-    let groups = fetch_all_stations(None, None, false, true).await.unwrap();
-    println!("Fetched {} groups", groups.len());
-    for group in groups {
-        println!("Group: {} ({} stations)", group.title, group.stations.len());
-    }
-}
-
-#[tokio::test]
 async fn test_fetch_all_stations_error_handling() {
     let temp_dir = tempdir().unwrap();
     let config_path = temp_dir.path().join("stations.config.json");
@@ -768,5 +757,3 @@ async fn test_fetch_stations_invalid_container() {
             .is_err()
     );
 }
-
-
