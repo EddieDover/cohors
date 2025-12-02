@@ -76,9 +76,9 @@ jobs:
       - name: Generate coverage
         run: |
           mkdir -p coverage
-          cargo llvm-cov --verbose --workspace --all-features --timeout 120 
-            --ignore-filename-regex "src/main.rs|src/tests.rs|src/.*/tests.rs|packaging/.*" 
-            --cobertura --output-path coverage/cobertura.xml 
+          cargo llvm-cov --verbose --workspace --all-features \
+            --ignore-filename-regex "src/main.rs|src/tests.rs|src/.*/tests.rs|packaging/.*" \
+            --cobertura --output-path coverage/cobertura.xml \
             --html --output-dir coverage
           echo "COVERAGE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura.xml | head -1 | awk '{print int($1*100)}')" >> $GITHUB_ENV
 
