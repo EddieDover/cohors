@@ -18,7 +18,7 @@ jobs:
     if: ${{ !startsWith(github.head_ref, 'release-please-') && github.actor != 'dependabot[bot]' }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -32,9 +32,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-
-      - name: Build
-        run: cargo build --verbose
 
       - name: Run tests
         run: cargo test --verbose --workspace
@@ -50,7 +47,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -69,6 +66,7 @@ jobs:
           cache-all-crates: true
           save-if: true
           shared-key: "llvm-cov"
+          cache-directories: "target/llvm-cov-target"
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
