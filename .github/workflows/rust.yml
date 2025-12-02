@@ -51,6 +51,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+      - uses: taiki-e/install-action@cargo-tarpaulin
 
       - name: Install dependencies
         run: |
@@ -65,15 +66,6 @@ jobs:
         with:
           cache-on-failure: true
           save-if: true
-
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@main
-
-      - name: Install tarpaulin
-        run: cargo binstall cargo-tarpaulin --no-confirm
-
-      - name: Verify tarpaulin path
-        run: export PATH="$HOME/.cargo/bin:$PATH"
 
       - name: Generate coverage
         run: |
