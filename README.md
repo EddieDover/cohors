@@ -5,8 +5,9 @@ A TUI music player written in Rust.
 ## Features
 - File system navigation and playback (MP3, WAV, OGG, FLAC)
 - Audio visualization (Spectrum Analyzer)
-- Internet Radio support (Configurable via radio.json)
+- Internet Radio support (Configurable via config file)
 - Supports MPRIS (media playback controls on a system-wide level)
+- Built-in management for Radio Stations and Sources
 
 ## Disclaimer
 
@@ -17,7 +18,7 @@ I'm happy to hear your feedback and feature requests! I'm also very open to PRs 
 | Key | Action |
 | --- | --- |
 | `q` | Quit Application |
-| `TAB` | Toggle Mode (Files / Radio) |
+| `TAB` | Toggle Mode (Files / Radio / Favorites) |
 | `/` | Search / Filter |
 | `?` | Toggle Help / About |
 | `j` / `↓` | Move Selection Down |
@@ -34,6 +35,7 @@ I'm happy to hear your feedback and feature requests! I'm also very open to PRs 
 | `x` | Export selected radio station to config |
 | `a` | Add Station/Source |
 | `e` | Edit Station/Source |
+| `f` | Toggle Favorite |
 
 ## Command Line Arguments
 
@@ -43,24 +45,45 @@ I'm happy to hear your feedback and feature requests! I'm also very open to PRs 
 | --- | --- |
 | `-v`, `--volume <0-100>` | _(Optional)_ Set the initial volume (default: 100) |
 | `-r`, `--radio` | _(Optional)_ Start in Radio mode |
-| `-s`, `--station-file <PATH>` | _(Optional)_ Path to the station configuration file |
 | `--invalidate-cache` | Force the station list to be re-downloaded |
 | `-h`, `--help` | Print help information |
 | `-V`, `--version` | Print version information |
 | `[PATH]` | _(Optional)_ Path to a file or directory to play on startup |
 
-## Radio Configuration
+## Managing Stations & Sources
 
-Cohors supports internet radio by fetching station lists from JSON APIs. You can configure multiple sources in `stations.config.json`. The station data is downloaded and cached for one week. To invalidate the cache and force a re-download, use the `--invalidate-cache` argument.
+You can manage your radio stations and sources directly within the application without manually editing the JSON configuration file.
+
+### Adding Items
+Press `a` to open the Add menu. You will be prompted to choose what to add:
+- Press `s` to add a **Single Station**.
+- Press `r` to add a **Source** (a dynamic list of stations from a JSON URL).
+
+### Editing Items
+To edit an existing item, navigate to it in the Radio list and press `e`.
+- **Custom Stations**: You can edit any station that you've added manually (under "Custom Stations").
+- **Sources**: Select the source header (the group title) to edit the source configuration.
+
+### Input Dialogs
+When adding or editing, a dialog will appear with several fields.
+- **Navigation**: Use `Tab` / `Down` to move to the next field, and `Shift+Tab` / `Up` to move back.
+- **Saving**: Press `Enter` to save your changes.
+- **Canceling**: Press `Esc` to close the dialog without saving.
+
+Changes are automatically saved to your `config.json` file.
+
+## Radio Configuration (Manual)
+
+While the built-in UI handles most tasks, you can still manually configure sources in `config.json`. The station data is downloaded and cached for one week. To invalidate the cache and force a re-download, use the `--invalidate-cache` argument.
 
 The application looks for the configuration file in the following order:
-1. The path specified by `--station-file <PATH>`
-2. `~/.config/cohors/stations.config.json`
-3. `./stations.config.json`
+1. `$XDG_CONFIG_HOME/cohors/config.json`
+2. `~/.config/cohors/config.json`
+3. `./config.json`
 
 ### Configuration Format
 
-The configuration file is a JSON object containing an optional list of `stations ` and/or `sources`.
+The configuration file is a JSON object containing an optional `radio` object, which holds lists of `stations` and/or `sources`.
 
 Each station defines an individual station you want to list while each source defines where to fetch the data and how to map the JSON fields to Cohors' internal station structure.
 
@@ -82,29 +105,31 @@ Sources support the following fields:
 
 ```json
 {
-  "stations": [
-    {
-      "name": "My Favorite Station",
-      "station_url": "http://stream.example.com/radio",
-      "description": "Best hits 24/7",
-      "homepage": "http://example.com"
-    }
-  ],
-  "sources": [
-    {
-      "title": "Example Radio Source",
-      "json_url": "https://api.example.com/stations.json",
-      "container": "stations",
-      "mapping": {
-        "station_name": "name",
-        "station_url": "stream_url",
-        "description": "desc",
-        "homepage": "website",
-        "tags": "genre",
-        "lastPlaying": "current_song"
+  "radio": {
+    "stations": [
+      {
+        "name": "My Favorite Station",
+        "station_url": "http://stream.example.com/radio",
+        "description": "Best hits 24/7",
+        "homepage": "http://example.com"
       }
-    }
-  ]
+    ],
+    "sources": [
+      {
+        "title": "Example Radio Source",
+        "json_url": "https://api.example.com/stations.json",
+        "container": "stations",
+        "mapping": {
+          "station_name": "name",
+          "station_url": "stream_url",
+          "description": "desc",
+          "homepage": "website",
+          "tags": "genre",
+          "lastPlaying": "current_song"
+        }
+      }
+    ]
+  }
 }
 ```
 

@@ -18,7 +18,7 @@ jobs:
     if: ${{ !startsWith(github.head_ref, 'release-please-') && github.actor != 'dependabot[bot]' }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -32,9 +32,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-
-      - name: Build
-        run: cargo build --verbose
 
       - name: Run tests
         run: cargo test --verbose --workspace
@@ -50,7 +47,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -69,14 +66,18 @@ jobs:
           cache-all-crates: true
           save-if: true
           shared-key: "llvm-cov"
+          cache-directories: "target/llvm-cov-target"
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Generate coverage
         run: |
           mkdir -p coverage
-          cargo llvm-cov --verbose --workspace --all-features \
+          cargo llvm-cov nextest --verbose --workspace --all-features \
             --ignore-filename-regex "src/main.rs|src/tests.rs|src/.*/tests.rs|packaging/.*" \
             --cobertura --output-path coverage/cobertura.xml
           echo "COVERAGE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura.xml | head -1 | awk '{print int($1*100)}')" >> $GITHUB_ENV

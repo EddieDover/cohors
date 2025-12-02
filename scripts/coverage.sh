@@ -17,12 +17,21 @@ if ! cargo llvm-cov --version &> /dev/null; then
     exit 1
 fi
 
+# Check if nextest is installed
+if ! cargo nextest --version &> /dev/null; then
+    echo "⚠️ cargo-nextest is not installed. Falling back to standard test runner."
+    echo "To speed up tests, install it with: cargo install cargo-nextest"
+    RUNNER=""
+else
+    RUNNER="nextest"
+fi
+
 # Create coverage directory
 mkdir -p "$COVERAGE_DIR"
 
 # Generate coverage reports
-cargo llvm-cov --workspace --all-features --ignore-filename-regex "src/main.rs|src/tests.rs|src/.*/tests.rs|packaging/.*" --html --output-dir coverage
-cargo llvm-cov --workspace --all-features --ignore-filename-regex "src/main.rs|src/tests.rs|src/.*/tests.rs|packaging/.*" --cobertura --output-path coverage/cobertura.xml
+cargo llvm-cov $RUNNER --workspace --all-features --ignore-filename-regex "src/main.rs|src/tests.rs|src/.*/tests.rs|packaging/.*" --html --output-dir coverage
+cargo llvm-cov report --cobertura --output-path coverage/cobertura.xml
 
 # Extract coverage percentage
 COVERAGE=$(grep -oP 'line-rate="\K[^"]+' "$COVERAGE_DIR/cobertura.xml" | head -1 | awk '{print int($1*100)}')

@@ -1,4 +1,5 @@
 use crate::audio::AudioAnalyzer;
+use crate::config::AppConfig;
 use crate::favorites::Favorites;
 use crate::mpris::MprisCommand;
 use crate::radio::{RadioGroup, RadioStation};
@@ -110,7 +111,6 @@ pub struct App {
     pub current_version: String,
     pub latest_version: Option<String>,
     pub update_receiver: Option<std::sync::mpsc::Receiver<Option<String>>>,
-    pub config_path: Option<PathBuf>,
     pub notification: Option<(String, Instant)>,
     pub add_modal_state: Option<AddModalState>,
 }
@@ -133,7 +133,7 @@ impl App {
         let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let mut app = App {
             mode: AppMode::FileSystem,
-            favorites: Favorites::load(),
+            favorites: Favorites::default(),
             current_dir,
             items: Vec::new(),
             state: ListState::default(),
@@ -175,7 +175,6 @@ impl App {
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             latest_version: None,
             update_receiver: None,
-            config_path: None,
             notification: None,
             add_modal_state: None,
         };
@@ -232,12 +231,10 @@ impl App {
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             latest_version: None,
             update_receiver: None,
-            config_path: None,
             notification: None,
             add_modal_state: None,
         }
     }
-
     pub fn check_for_updates(&mut self) {
         let (tx, rx) = std::sync::mpsc::channel();
         self.update_receiver = Some(rx);
@@ -1004,13 +1001,22 @@ impl App {
     pub fn save_radio_station(&mut self) {
         if self.mode == AppMode::Radio
             && let Some(station) = self.get_selected_station()
-            && let Some(config_path) = &self.config_path
         {
-            if let Err(e) = crate::radio::add_station_to_config(config_path, &station) {
+            if let Err(e) = crate::radio::add_station_to_config(&station) {
                 // Ideally show error to user
                 eprintln!("Failed to export station: {}", e);
             } else {
                 self.notification = Some((format!("Exported: {}", station.name), Instant::now()));
+            }
+        }
+    }
+
+    pub fn save_config(&self) {
+        if let Ok(mut config) = AppConfig::load() {
+            config.volume = Some(self.volume);
+            config.favorites = self.favorites.clone();
+            if let Err(e) = config.save() {
+                eprintln!("Failed to save config: {}", e);
             }
         }
     }
@@ -1111,21 +1117,19 @@ impl App {
                             last_playing: None,
                         };
 
-                        if let Some(config_path) = &self.config_path {
-                            let result = if let Some(old_url) = original_url {
-                                crate::radio::edit_station_in_config(config_path, old_url, &station)
-                            } else {
-                                crate::radio::add_station_to_config(config_path, &station)
-                            };
+                        let result = if let Some(old_url) = original_url {
+                            crate::radio::edit_station_in_config(old_url, &station)
+                        } else {
+                            crate::radio::add_station_to_config(&station)
+                        };
 
-                            if let Err(e) = result {
-                                self.notification = Some((format!("Error: {}", e), Instant::now()));
-                            } else {
-                                self.notification =
-                                    Some((format!("Saved: {}", station.name), Instant::now()));
-                                self.add_modal_state = None;
-                                self.reload_stations();
-                            }
+                        if let Err(e) = result {
+                            self.notification = Some((format!("Error: {}", e), Instant::now()));
+                        } else {
+                            self.notification =
+                                Some((format!("Saved: {}", station.name), Instant::now()));
+                            self.add_modal_state = None;
+                            self.reload_stations();
                         }
                     }
                     KeyCode::Char(c) => {
@@ -1184,7 +1188,7 @@ impl App {
                             return;
                         }
                         // Save
-                        let source = crate::radio::RadioSourceConfig {
+                        let source = crate::config::RadioSourceConfig {
                             title: title.clone(),
                             json_url: json_url.clone(),
                             container: if container.is_empty() {
@@ -1192,7 +1196,7 @@ impl App {
                             } else {
                                 Some(container.clone())
                             },
-                            mapping: crate::radio::StationMapping {
+                            mapping: crate::config::StationMapping {
                                 station_name: map_name.clone(),
                                 station_url: map_url.clone(),
                                 description: if map_desc.is_empty() {
@@ -1214,26 +1218,22 @@ impl App {
                             },
                         };
 
-                        if let Some(config_path) = &self.config_path {
-                            let result = if let Some(old_title) = original_title {
-                                crate::radio::edit_source_in_config(config_path, old_title, &source)
-                            } else {
-                                crate::radio::add_source_to_config(config_path, &source)
-                            };
+                        let result = if let Some(old_title) = original_title {
+                            crate::radio::edit_source_in_config(old_title, &source)
+                        } else {
+                            crate::radio::add_source_to_config(&source)
+                        };
 
-                            if let Err(e) = result {
-                                self.notification = Some((format!("Error: {}", e), Instant::now()));
-                            } else {
-                                self.notification = Some((
-                                    format!("Saved Source: {}", source.title),
-                                    Instant::now(),
-                                ));
-                                // Invalidate cache for this source to ensure fresh fetch
-                                crate::radio::invalidate_source_cache(&source.title, None);
+                        if let Err(e) = result {
+                            self.notification = Some((format!("Error: {}", e), Instant::now()));
+                        } else {
+                            self.notification =
+                                Some((format!("Saved Source: {}", source.title), Instant::now()));
+                            // Invalidate cache for this source to ensure fresh fetch
+                            crate::radio::invalidate_source_cache(&source.title, None);
 
-                                self.add_modal_state = None;
-                                self.reload_stations();
-                            }
+                            self.add_modal_state = None;
+                            self.reload_stations();
                         }
                     }
                     KeyCode::Char(c) => {
@@ -1271,22 +1271,14 @@ impl App {
     }
 
     pub fn reload_stations(&mut self) {
-        if let Some(config_path) = &self.config_path {
-            let config_path = config_path.clone();
-            let (tx, rx) = std::sync::mpsc::channel();
-            self.station_receiver = Some(rx);
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.station_receiver = Some(rx);
 
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().unwrap();
-                let result = rt.block_on(crate::radio::fetch_all_stations(
-                    Some(config_path),
-                    None,
-                    false,
-                    true,
-                ));
-                let _ = tx.send(result.map_err(|e| e.to_string()));
-            });
-        }
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let result = rt.block_on(crate::radio::fetch_all_stations(None, false, true));
+            let _ = tx.send(result.map_err(|e| e.to_string()));
+        });
     }
 
     pub fn open_edit_modal(&mut self) {
@@ -1301,9 +1293,7 @@ impl App {
             // Determine if the group header is selected
             if current_idx == selected_idx {
                 if group.title != "Custom Stations"
-                    && let Some(config_path) = &self.config_path
-                    && let Ok(config) =
-                        crate::radio::load_config(Some(config_path.clone()), None, None)
+                    && let Ok(config) = crate::radio::load_config()
                     && let Some(source) = config.sources.iter().find(|s| s.title == group.title)
                 {
                     self.add_modal_state = Some(AddModalState::InputSource {
@@ -1331,9 +1321,7 @@ impl App {
 
                     // Only allow editing if it's in the "Custom Stations" group
                     if group.title == "Custom Stations"
-                        && let Some(config_path) = &self.config_path
-                        && let Ok(config) =
-                            crate::radio::load_config(Some(config_path.clone()), None, None)
+                        && let Ok(config) = crate::radio::load_config()
                         && let Some(s) = config
                             .individual_stations
                             .iter()
@@ -1363,6 +1351,7 @@ impl App {
                     && path.file_name().and_then(|n| n.to_str()) != Some("..")
                 {
                     self.favorites.toggle_file(path.clone());
+                    self.save_config();
                 }
             }
             AppMode::Radio => {
@@ -1370,6 +1359,7 @@ impl App {
                     && let Some(station) = self.get_radio_station_at_index(i)
                 {
                     self.favorites.toggle_station(station.clone());
+                    self.save_config();
                 }
             }
             AppMode::Favorites => {
@@ -1378,11 +1368,13 @@ impl App {
                     if i < self.favorites.files.len() {
                         if let Some(path) = self.favorites.files.get(i) {
                             self.favorites.toggle_file(path.clone());
+                            self.save_config();
                         }
                     } else {
                         let station_idx = i - self.favorites.files.len();
                         if let Some(station) = self.favorites.stations.get(station_idx) {
                             self.favorites.toggle_station(station.clone());
+                            self.save_config();
                         }
                     }
                     // Adjust selection if needed

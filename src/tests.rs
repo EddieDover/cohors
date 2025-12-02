@@ -8,7 +8,6 @@ fn test_apply_args_volume() {
     let args = Args {
         volume: Some(50),
         radio: false,
-        station_file: None,
         invalidate_cache: false,
         path: vec![],
     };
@@ -22,7 +21,6 @@ fn test_apply_args_radio() {
     let args = Args {
         volume: None,
         radio: true,
-        station_file: None,
         invalidate_cache: false,
         path: vec![],
     };
@@ -43,7 +41,6 @@ fn test_apply_args_file_path() {
     let args = Args {
         volume: None,
         radio: false,
-        station_file: None,
         invalidate_cache: false,
         path: vec![file_path.to_string_lossy().to_string()],
     };
@@ -79,7 +76,6 @@ fn test_apply_args_file_path_with_spaces() {
     let args = Args {
         volume: None,
         radio: false,
-        station_file: None,
         invalidate_cache: false,
         path: parts,
     };
@@ -107,7 +103,6 @@ fn test_apply_args_dir_path() {
     let args = Args {
         volume: None,
         radio: false,
-        station_file: None,
         invalidate_cache: false,
         path: vec![dir.path().to_string_lossy().to_string()],
     };

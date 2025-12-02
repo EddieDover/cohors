@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_utils::with_xdg_config_home;
 use tempfile::tempdir;
 
 #[test]
@@ -84,55 +85,64 @@ fn test_map_station_all_fields() {
 #[test]
 fn test_load_config_home() {
     let temp_home = tempdir().unwrap();
-    let config_dir = temp_home.path().join(".config/cohors");
-    std::fs::create_dir_all(&config_dir).unwrap();
-    let config_path = config_dir.join("stations.config.json");
+    let config_dir = temp_home.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
 
-    let config_content = r#"{ "sources": [] }"#;
-    std::fs::write(&config_path, config_content).unwrap();
+    with_xdg_config_home(&config_dir, || {
+        let config_content = r#"{ "radio": { "sources": [] } }"#;
+        std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        std::fs::write(&config_path, config_content).unwrap();
 
-    let config = load_config(None, Some(temp_home.path().to_path_buf()), None).unwrap();
-    assert!(config.sources.is_empty());
+        let config = load_config().unwrap();
+        assert!(config.sources.is_empty());
+    });
 }
 
-#[tokio::test]
-async fn test_fetch_all_stations() {
+#[test]
+fn test_fetch_all_stations() {
     let temp_dir = tempdir().unwrap();
-    let config_path = temp_dir.path().join("stations.config.json");
+    let config_dir = temp_dir.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
 
-    // Mock server
-    let mut server = mockito::Server::new_async().await;
-    let _m = server
-        .mock("GET", "/stations.json")
-        .with_status(200)
-        .with_body(r#"[{"name": "Station 1", "url": "http://1.com"}]"#)
-        .create_async()
-        .await;
+    with_xdg_config_home(&config_dir, || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            // Mock server
+            let mut server = mockito::Server::new_async().await;
+            let _m = server
+                .mock("GET", "/stations.json")
+                .with_status(200)
+                .with_body(r#"[{"name": "Station 1", "url": "http://1.com"}]"#)
+                .create_async()
+                .await;
 
-    let config_content = format!(
-        r#"{{
-        "sources": [
-            {{
-                "title": "Test Source",
-                "json_url": "{}/stations.json",
-                "mapping": {{
-                    "station_name": "name",
-                    "station_url": "url"
+            let config_content = format!(
+                r#"{{
+                "radio": {{
+                    "sources": [
+                        {{
+                            "title": "Test Source",
+                            "json_url": "{}/stations.json",
+                            "mapping": {{
+                                "station_name": "name",
+                                "station_url": "url"
+                            }}
+                        }}
+                    ]
                 }}
-            }}
-        ]
-    }}"#,
-        server.url()
-    );
+            }}"#,
+                server.url()
+            );
 
-    std::fs::write(&config_path, config_content).unwrap();
+            std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+            std::fs::write(&config_path, config_content).unwrap();
 
-    let groups = fetch_all_stations(Some(config_path), None, true, true)
-        .await
-        .unwrap();
-    assert_eq!(groups.len(), 1);
-    assert_eq!(groups[0].title, "Test Source");
-    assert_eq!(groups[0].stations.len(), 1);
+            let groups = fetch_all_stations(None, true, true).await.unwrap();
+            assert_eq!(groups.len(), 1);
+            assert_eq!(groups[0].title, "Test Source");
+            assert_eq!(groups[0].stations.len(), 1);
+        });
+    });
 }
 
 #[tokio::test]
@@ -250,83 +260,43 @@ fn test_fetch_playlist_stream_url_check() {
 #[test]
 fn test_load_config_local() {
     let dir = tempdir().unwrap();
-    let file_path = dir.path().join("stations.config.json");
-    let content = r#"{
-        "sources": [
-            {
-                "title": "Test Group",
-                "json_url": "http://test.com",
-                "container": null,
-                "mapping": {
-                    "station_name": "name",
-                    "station_url": "url"
-                }
+    let config_dir = dir.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
+
+    with_xdg_config_home(&config_dir, || {
+        let content = r#"{
+            "radio": {
+                "sources": [
+                    {
+                        "title": "Test Group",
+                        "json_url": "http://test.com",
+                        "container": null,
+                        "mapping": {
+                            "station_name": "name",
+                            "station_url": "url"
+                        }
+                    }
+                ]
             }
-        ]
-    }"#;
-    fs::write(&file_path, content).unwrap();
+        }"#;
+        std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        std::fs::write(&config_path, content).unwrap();
 
-    // Pass current_dir explicitly, and mock home_dir to avoid picking up real user config
-    let configs = load_config(
-        None,
-        Some(dir.path().to_path_buf()),
-        Some(dir.path().to_path_buf()),
-    )
-    .unwrap();
-    assert_eq!(configs.sources.len(), 1);
-    assert_eq!(configs.sources[0].title, "Test Group");
-}
-
-#[test]
-fn test_load_config_custom_path() {
-    let dir = tempdir().unwrap();
-    let file_path = dir.path().join("custom_stations.json");
-    let content = r#"{
-        "sources": [
-            {
-                "title": "Custom Group",
-                "json_url": "http://custom.com",
-                "container": null,
-                "mapping": {
-                    "station_name": "name",
-                    "station_url": "url"
-                }
-            }
-        ]
-    }"#;
-    fs::write(&file_path, content).unwrap();
-
-    let configs = load_config(Some(file_path), None, None).unwrap();
-    assert_eq!(configs.sources.len(), 1);
-    assert_eq!(configs.sources[0].title, "Custom Group");
+        let configs = load_config().unwrap();
+        assert_eq!(configs.sources.len(), 1);
+        assert_eq!(configs.sources[0].title, "Test Group");
+    });
 }
 
 #[test]
 fn test_load_config_missing_file() {
     let dir = tempdir().unwrap();
-
-    // Pass temp dir as HOME and CWD, ensuring no config exists there
-    let result = load_config(
-        None,
-        Some(dir.path().to_path_buf()),
-        Some(dir.path().to_path_buf()),
-    );
-    if result.is_ok() {
-        println!("Unexpected Ok result: {:?}", result.as_ref().unwrap());
-    }
-    assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("not found"));
-}
-#[test]
-fn test_load_config_custom_path_missing() {
-    let result = load_config(Some(PathBuf::from("/non/existent/path.json")), None, None);
-    assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("Custom config file not found")
-    );
+    with_xdg_config_home(dir.path(), || {
+        // Should return default config (empty)
+        let result = load_config();
+        assert!(result.is_ok());
+        assert!(result.unwrap().sources.is_empty());
+    });
 }
 
 #[tokio::test]
@@ -384,42 +354,49 @@ async fn test_fetch_stations_invalid_json() {
     assert!(result.is_err());
 }
 
-#[tokio::test]
-async fn test_fetch_all_stations_error_handling() {
+#[test]
+fn test_fetch_all_stations_error_handling() {
     let temp_dir = tempdir().unwrap();
-    let config_path = temp_dir.path().join("stations.config.json");
+    let config_dir = temp_dir.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
 
-    // Mock server that returns 500
-    let mut server = mockito::Server::new_async().await;
-    let _m = server
-        .mock("GET", "/stations.json")
-        .with_status(500)
-        .create_async()
-        .await;
+    with_xdg_config_home(&config_dir, || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            // Mock server that returns 500
+            let mut server = mockito::Server::new_async().await;
+            let _m = server
+                .mock("GET", "/stations.json")
+                .with_status(500)
+                .create_async()
+                .await;
 
-    let config_content = format!(
-        r#"{{
-        "sources": [
-            {{
-                "title": "Error Source",
-                "json_url": "{}/stations.json",
-                "mapping": {{
-                    "station_name": "name",
-                    "station_url": "url"
+            let config_content = format!(
+                r#"{{
+                "radio": {{
+                    "sources": [
+                        {{
+                            "title": "Error Source",
+                            "json_url": "{}/stations.json",
+                            "mapping": {{
+                                "station_name": "name",
+                                "station_url": "url"
+                            }}
+                        }}
+                    ]
                 }}
-            }}
-        ]
-    }}"#,
-        server.url()
-    );
+            }}"#,
+                server.url()
+            );
 
-    std::fs::write(&config_path, config_content).unwrap();
+            std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+            std::fs::write(&config_path, config_content).unwrap();
 
-    // Should not fail, but return empty list (or list with other successful sources)
-    let groups = fetch_all_stations(Some(config_path), None, true, true)
-        .await
-        .unwrap();
-    assert_eq!(groups.len(), 0);
+            // Should not fail, but return empty list (or list with other successful sources)
+            let groups = fetch_all_stations(None, true, true).await.unwrap();
+            assert_eq!(groups.len(), 0);
+        });
+    });
 }
 
 #[tokio::test]
@@ -517,53 +494,68 @@ async fn test_fetch_stations_cache_expiry() {
 #[test]
 fn test_load_config_individual_stations() {
     let dir = tempdir().unwrap();
-    let file_path = dir.path().join("individual.json");
-    let content = r#"{
-        "stations": [
-            {
-                "name": "My Station",
-                "station_url": "http://mystation.com",
-                "description": "My Description"
-            }
-        ]
-    }"#;
-    fs::write(&file_path, content).unwrap();
+    let config_dir = dir.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
 
-    let configs = load_config(Some(file_path), None, None).unwrap();
-    assert_eq!(configs.sources.len(), 0);
-    assert_eq!(configs.individual_stations.len(), 1);
-    assert_eq!(configs.individual_stations[0].name, "My Station");
-    assert_eq!(
-        configs.individual_stations[0].station_url,
-        "http://mystation.com"
-    );
-    assert_eq!(
-        configs.individual_stations[0].description,
-        Some("My Description".to_string())
-    );
+    with_xdg_config_home(&config_dir, || {
+        let content = r#"{
+            "radio": {
+                "stations": [
+                    {
+                        "name": "My Station",
+                        "station_url": "http://mystation.com",
+                        "description": "My Description"
+                    }
+                ]
+            }
+        }"#;
+        std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        std::fs::write(&config_path, content).unwrap();
+
+        let configs = load_config().unwrap();
+        assert_eq!(configs.sources.len(), 0);
+        assert_eq!(configs.individual_stations.len(), 1);
+        assert_eq!(configs.individual_stations[0].name, "My Station");
+        assert_eq!(
+            configs.individual_stations[0].station_url,
+            "http://mystation.com"
+        );
+        assert_eq!(
+            configs.individual_stations[0].description,
+            Some("My Description".to_string())
+        );
+    });
 }
 
-#[tokio::test]
-async fn test_fetch_all_stations_individual() {
+#[test]
+fn test_fetch_all_stations_individual() {
     let dir = tempdir().unwrap();
-    let file_path = dir.path().join("individual.json");
-    let content = r#"{
-        "stations": [
-            {
-                "name": "My Station",
-                "station_url": "http://mystation.com"
-            }
-        ]
-    }"#;
-    fs::write(&file_path, content).unwrap();
+    let config_dir = dir.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
 
-    let groups = fetch_all_stations(Some(file_path), None, false, true)
-        .await
-        .unwrap();
-    assert_eq!(groups.len(), 1);
-    assert_eq!(groups[0].title, "Custom Stations");
-    assert_eq!(groups[0].stations.len(), 1);
-    assert_eq!(groups[0].stations[0].name, "My Station");
+    let content = r#"{
+        "radio": {
+            "stations": [
+                {
+                    "name": "My Station",
+                    "station_url": "http://mystation.com"
+                }
+            ]
+        }
+    }"#;
+    std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    std::fs::write(&config_path, content).unwrap();
+
+    with_xdg_config_home(&config_dir, || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let groups = fetch_all_stations(None, false, true).await.unwrap();
+            assert_eq!(groups.len(), 1);
+            assert_eq!(groups[0].title, "Custom Stations");
+            assert_eq!(groups[0].stations.len(), 1);
+            assert_eq!(groups[0].stations[0].name, "My Station");
+        });
+    });
 }
 
 #[test]

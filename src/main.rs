@@ -1,5 +1,6 @@
 mod app;
 mod audio;
+mod config;
 mod favorites;
 mod mpris;
 mod radio;
@@ -10,6 +11,7 @@ mod ui;
 use anyhow::Result;
 use app::App;
 use clap::Parser;
+use config::AppConfig;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
@@ -31,10 +33,6 @@ pub struct Args {
     /// Start in radio mode
     #[arg(short, long)]
     radio: bool,
-
-    /// Path to the station configuration file
-    #[arg(short = 's', long = "station-file")]
-    station_file: Option<String>,
 
     /// Invalidate the station cache
     #[arg(long = "invalidate-cache")]
@@ -114,6 +112,17 @@ fn main() -> Result<()> {
     // Create app state first (to handle audio init noise before TUI)
     let mut app = App::new();
 
+    // Load config
+    if let Ok(config) = AppConfig::load() {
+        if let Some(vol) = config.volume {
+            app.volume = vol;
+            if let Some(sink) = &app.sink {
+                sink.set_volume(app.volume);
+            }
+        }
+        app.favorites = config.favorites;
+    }
+
     // Setup MPRIS
     let (tx, rx) = std::sync::mpsc::channel();
     let mpris_state = std::sync::Arc::new(std::sync::Mutex::new(mpris::MprisState::default()));
@@ -138,13 +147,8 @@ fn main() -> Result<()> {
     // Fetch radio stations
     println!("Loading radio stations...");
     let rt = tokio::runtime::Runtime::new()?;
-    let station_file = args.station_file.map(PathBuf::from);
-
-    // Resolve config path
-    app.config_path = Some(radio::resolve_config_path(station_file.clone(), None, None));
 
     match rt.block_on(radio::fetch_all_stations(
-        station_file,
         None,
         args.invalidate_cache,
         false,
@@ -177,6 +181,14 @@ fn main() -> Result<()> {
     // Run app
     let mut events = app::CrosstermEvents;
     let res = app::run_app(&mut terminal, &mut app, &mut events, &rx);
+
+    // Save config
+    let mut config = AppConfig::load().unwrap_or_default();
+    config.volume = Some(app.volume);
+    config.favorites = app.favorites;
+    if let Err(e) = config.save() {
+        eprintln!("Failed to save config: {}", e);
+    }
 
     // Restore terminal
     disable_raw_mode()?;

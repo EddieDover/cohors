@@ -1099,54 +1099,58 @@ fn test_get_selected_station() {
 
 #[test]
 fn test_save_radio_station() {
-    let mut app = App::new_test();
-    app.mode = AppMode::Radio;
-
     let temp = tempfile::TempDir::new().unwrap();
-    let config_path = temp.path().join("stations.config.json");
-    app.config_path = Some(config_path.clone());
+    let config_dir = temp.path().to_path_buf();
 
-    let station = crate::radio::RadioStation {
-        name: "Test Station".to_string(),
-        url: "http://test.com".to_string(),
-        description: None,
-        homepage: None,
-        tags: None,
-        last_playing: None,
-    };
+    with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
+        app.mode = AppMode::Radio;
 
-    let group = crate::radio::RadioGroup {
-        title: "Test Group".to_string(),
-        stations: vec![station.clone()],
-        is_expanded: true,
-    };
+        let station = crate::radio::RadioStation {
+            name: "Test Station".to_string(),
+            url: "http://test.com".to_string(),
+            description: None,
+            homepage: None,
+            tags: None,
+            last_playing: None,
+        };
 
-    app.radio_groups.push(group);
-    app.update_search_results();
+        let group = crate::radio::RadioGroup {
+            title: "Test Group".to_string(),
+            stations: vec![station.clone()],
+            is_expanded: true,
+        };
 
-    // Select station
-    app.radio_state.select(Some(1));
+        app.radio_groups.push(group);
+        app.update_search_results();
 
-    app.save_radio_station();
+        // Select station
+        app.radio_state.select(Some(1));
 
-    assert!(config_path.exists());
-    assert!(app.notification.is_some());
-    assert!(app.notification.unwrap().0.contains("Exported"));
+        app.save_radio_station();
+
+        let config_path = config_dir.join("cohors/config.json");
+        assert!(config_path.exists());
+        assert!(app.notification.is_some());
+        assert!(app.notification.unwrap().0.contains("Exported"));
+    });
 }
 
 #[test]
 fn test_save_radio_station_wrong_mode() {
-    let mut app = App::new_test();
-    app.mode = AppMode::FileSystem;
-
     let temp = tempfile::TempDir::new().unwrap();
-    let config_path = temp.path().join("stations.config.json");
-    app.config_path = Some(config_path.clone());
+    let config_dir = temp.path().to_path_buf();
 
-    app.save_radio_station();
+    with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
+        app.mode = AppMode::FileSystem;
 
-    assert!(!config_path.exists());
-    assert!(app.notification.is_none());
+        app.save_radio_station();
+
+        let config_path = config_dir.join("cohors/config.json");
+        assert!(!config_path.exists());
+        assert!(app.notification.is_none());
+    });
 }
 
 #[test]
@@ -1164,113 +1168,119 @@ fn test_notification_expiry() {
 
 #[test]
 fn test_add_modal_flow() {
-    let mut app = App::new_test();
     let temp = tempfile::TempDir::new().unwrap();
-    let config_path = temp.path().join("stations.config.json");
-    app.config_path = Some(config_path.clone());
+    let config_dir = temp.path().to_path_buf();
 
-    // Open modal
-    app.open_add_modal();
-    assert!(matches!(
-        app.add_modal_state,
-        Some(AddModalState::Selection)
-    ));
+    with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
 
-    // Select Station
-    app.handle_add_modal_input(KeyCode::Char('s'));
-    if let Some(AddModalState::InputStation {
-        name,
-        focused_field,
-        ..
-    }) = &app.add_modal_state
-    {
-        assert_eq!(name, "");
-        assert_eq!(*focused_field, 0);
-    } else {
-        panic!("Expected InputStation state");
-    }
+        // Open modal
+        app.open_add_modal();
+        assert!(matches!(
+            app.add_modal_state,
+            Some(AddModalState::Selection)
+        ));
 
-    // Type Name
-    app.handle_add_modal_input(KeyCode::Char('T'));
-    app.handle_add_modal_input(KeyCode::Char('e'));
-    app.handle_add_modal_input(KeyCode::Char('s'));
-    app.handle_add_modal_input(KeyCode::Char('t'));
+        // Select Station
+        app.handle_add_modal_input(KeyCode::Char('s'));
+        if let Some(AddModalState::InputStation {
+            name,
+            focused_field,
+            ..
+        }) = &app.add_modal_state
+        {
+            assert_eq!(name, "");
+            assert_eq!(*focused_field, 0);
+        } else {
+            panic!("Expected InputStation state");
+        }
 
-    // Next field (URL)
-    app.handle_add_modal_input(KeyCode::Tab);
+        // Type Name
+        app.handle_add_modal_input(KeyCode::Char('T'));
+        app.handle_add_modal_input(KeyCode::Char('e'));
+        app.handle_add_modal_input(KeyCode::Char('s'));
+        app.handle_add_modal_input(KeyCode::Char('t'));
 
-    // Type URL
-    app.handle_add_modal_input(KeyCode::Char('h'));
-    app.handle_add_modal_input(KeyCode::Char('t'));
-    app.handle_add_modal_input(KeyCode::Char('t'));
-    app.handle_add_modal_input(KeyCode::Char('p'));
+        // Next field (URL)
+        app.handle_add_modal_input(KeyCode::Tab);
 
-    // Save
-    app.handle_add_modal_input(KeyCode::Enter);
+        // Type URL
+        app.handle_add_modal_input(KeyCode::Char('h'));
+        app.handle_add_modal_input(KeyCode::Char('t'));
+        app.handle_add_modal_input(KeyCode::Char('t'));
+        app.handle_add_modal_input(KeyCode::Char('p'));
 
-    // Check if saved
-    assert!(app.add_modal_state.is_none());
-    assert!(config_path.exists());
-    let content = std::fs::read_to_string(&config_path).unwrap();
-    assert!(content.contains("Test"));
-    assert!(content.contains("http"));
+        // Save
+        app.handle_add_modal_input(KeyCode::Enter);
+
+        // Check if saved
+        assert!(app.add_modal_state.is_none());
+        let config_path = config_dir.join("cohors/config.json");
+        assert!(config_path.exists());
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        assert!(content.contains("Test"));
+        assert!(content.contains("http"));
+    });
 }
 
 #[test]
 fn test_add_modal_source_flow() {
-    let mut app = App::new_test();
     let temp = tempfile::TempDir::new().unwrap();
-    let config_path = temp.path().join("stations.config.json");
-    app.config_path = Some(config_path.clone());
+    let config_dir = temp.path().to_path_buf();
 
-    // Open modal
-    app.open_add_modal();
+    with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
 
-    // Select Source
-    app.handle_add_modal_input(KeyCode::Char('r'));
-    if let Some(AddModalState::InputSource {
-        title,
-        focused_field,
-        ..
-    }) = &app.add_modal_state
-    {
-        assert_eq!(title, "");
-        assert_eq!(*focused_field, 0);
-    } else {
-        panic!("Expected InputSource state");
-    }
+        // Open modal
+        app.open_add_modal();
 
-    // Type Title
-    app.handle_add_modal_input(KeyCode::Char('S'));
-    app.handle_add_modal_input(KeyCode::Char('r'));
-    app.handle_add_modal_input(KeyCode::Char('c'));
+        // Select Source
+        app.handle_add_modal_input(KeyCode::Char('r'));
+        if let Some(AddModalState::InputSource {
+            title,
+            focused_field,
+            ..
+        }) = &app.add_modal_state
+        {
+            assert_eq!(title, "");
+            assert_eq!(*focused_field, 0);
+        } else {
+            panic!("Expected InputSource state");
+        }
 
-    // Next field (JSON URL)
-    app.handle_add_modal_input(KeyCode::Tab);
-    app.handle_add_modal_input(KeyCode::Char('h'));
-    app.handle_add_modal_input(KeyCode::Char('t'));
-    app.handle_add_modal_input(KeyCode::Char('t'));
-    app.handle_add_modal_input(KeyCode::Char('p'));
+        // Type Title
+        app.handle_add_modal_input(KeyCode::Char('S'));
+        app.handle_add_modal_input(KeyCode::Char('r'));
+        app.handle_add_modal_input(KeyCode::Char('c'));
 
-    // Next field (Container) - Optional
-    app.handle_add_modal_input(KeyCode::Tab);
+        // Next field (JSON URL)
+        app.handle_add_modal_input(KeyCode::Tab);
+        app.handle_add_modal_input(KeyCode::Char('h'));
+        app.handle_add_modal_input(KeyCode::Char('t'));
+        app.handle_add_modal_input(KeyCode::Char('t'));
+        app.handle_add_modal_input(KeyCode::Char('p'));
 
-    // Next field (Map Name)
-    app.handle_add_modal_input(KeyCode::Tab);
-    app.handle_add_modal_input(KeyCode::Char('n'));
+        // Next field (Container) - Optional
+        app.handle_add_modal_input(KeyCode::Tab);
 
-    // Next field (Map URL)
-    app.handle_add_modal_input(KeyCode::Tab);
-    app.handle_add_modal_input(KeyCode::Char('u'));
+        // Next field (Map Name)
+        app.handle_add_modal_input(KeyCode::Tab);
+        app.handle_add_modal_input(KeyCode::Char('n'));
 
-    // Save
-    app.handle_add_modal_input(KeyCode::Enter);
+        // Next field (Map URL)
+        app.handle_add_modal_input(KeyCode::Tab);
+        app.handle_add_modal_input(KeyCode::Char('u'));
 
-    // Check if saved
-    assert!(app.add_modal_state.is_none());
-    assert!(config_path.exists());
-    let content = std::fs::read_to_string(&config_path).unwrap();
-    assert!(content.contains("Src"));
+        // Save
+        app.handle_add_modal_input(KeyCode::Enter);
+
+        // Check if saved
+        assert!(app.add_modal_state.is_none());
+        let config_path = config_dir.join("cohors/config.json");
+        assert!(config_path.exists());
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        assert!(content.contains("Src"));
+    });
 }
 
 #[test]
