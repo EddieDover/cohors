@@ -78,8 +78,7 @@ jobs:
           mkdir -p coverage
           cargo llvm-cov --verbose --workspace --all-features \
             --ignore-filename-regex "src/main.rs|src/tests.rs|src/.*/tests.rs|packaging/.*" \
-            --cobertura --output-path coverage/cobertura.xml \
-            --html --output-dir coverage
+            --cobertura --output-path coverage/cobertura.xml
           echo "COVERAGE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura.xml | head -1 | awk '{print int($1*100)}')" >> $GITHUB_ENV
 
       - name: Parse per-file coverage
@@ -236,7 +235,6 @@ jobs:
           name: code-coverage-report
           path: |
             coverage/cobertura.xml
-            coverage/html/
 
       - name: Fail if coverage is below threshold
         if: steps.coverage-check.outputs.pass == 'false'
