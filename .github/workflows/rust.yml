@@ -71,10 +71,13 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Generate coverage
         run: |
           mkdir -p coverage
-          cargo llvm-cov --verbose --workspace --all-features \
+          cargo llvm-cov nextest --verbose --workspace --all-features \
             --ignore-filename-regex "src/main.rs|src/tests.rs|src/.*/tests.rs|packaging/.*" \
             --cobertura --output-path coverage/cobertura.xml
           echo "COVERAGE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura.xml | head -1 | awk '{print int($1*100)}')" >> $GITHUB_ENV
