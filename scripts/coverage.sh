@@ -22,7 +22,8 @@ mkdir -p "$COVERAGE_DIR"
 
 # Generate coverage reports
 cargo llvm-cov --workspace --all-features --ignore-filename-regex "src/main.rs|src/tests.rs|src/.*/tests.rs|packaging/.*" --html --output-dir coverage
-cargo llvm-cov --workspace --all-features --ignore-filename-regex "src/main.rs|src/tests.rs|src/.*/tests.rs|packaging/.*" --cobertura --output-path coverage/cobertura.xml
+cargo llvm-cov report --lcov --output-path coverage/lcov.info
+cargo llvm-cov report --cobertura --output-path coverage/cobertura.xml
 
 # Extract coverage percentage
 COVERAGE=$(grep -oP 'line-rate="\K[^"]+' "$COVERAGE_DIR/cobertura.xml" | head -1 | awk '{print int($1*100)}')
