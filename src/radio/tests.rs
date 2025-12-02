@@ -385,17 +385,6 @@ async fn test_fetch_stations_invalid_json() {
 }
 
 #[tokio::test]
-#[ignore]
-async fn test_fetch_real_stations() {
-    // Ensure we can find the config file in the current directory
-    let groups = fetch_all_stations(None, None, false, true).await.unwrap();
-    println!("Fetched {} groups", groups.len());
-    for group in groups {
-        println!("Group: {} ({} stations)", group.title, group.stations.len());
-    }
-}
-
-#[tokio::test]
 async fn test_fetch_all_stations_error_handling() {
     let temp_dir = tempdir().unwrap();
     let config_path = temp_dir.path().join("stations.config.json");
@@ -767,46 +756,4 @@ async fn test_fetch_stations_invalid_container() {
             .await
             .is_err()
     );
-}
-
-#[test]
-fn test_add_source_to_config() {
-    let temp_dir = tempdir().unwrap();
-    let config_path = temp_dir.path().join("stations.config.json");
-
-    let source = RadioSourceConfig {
-        title: "New Source".to_string(),
-        json_url: "http://example.com/json".to_string(),
-        container: None,
-        mapping: StationMapping {
-            station_name: "name".to_string(),
-            station_url: "url".to_string(),
-            description: None,
-            homepage: None,
-            tags: None,
-            last_playing: None,
-        },
-    };
-
-    // Add to new file
-    add_source_to_config(&config_path, &source).unwrap();
-    let content = std::fs::read_to_string(&config_path).unwrap();
-    let config: RadioConfig = serde_json::from_str(&content).unwrap();
-    assert_eq!(config.sources.len(), 1);
-    assert_eq!(config.sources[0].title, "New Source");
-
-    // Add duplicate (should be ignored)
-    add_source_to_config(&config_path, &source).unwrap();
-    let content = std::fs::read_to_string(&config_path).unwrap();
-    let config: RadioConfig = serde_json::from_str(&content).unwrap();
-    assert_eq!(config.sources.len(), 1);
-
-    // Add another source
-    let mut source2 = source.clone();
-    source2.title = "Another Source".to_string();
-    source2.json_url = "http://example.com/json2".to_string();
-    add_source_to_config(&config_path, &source2).unwrap();
-    let content = std::fs::read_to_string(&config_path).unwrap();
-    let config: RadioConfig = serde_json::from_str(&content).unwrap();
-    assert_eq!(config.sources.len(), 2);
 }

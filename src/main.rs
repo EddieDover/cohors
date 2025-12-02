@@ -159,7 +159,7 @@ fn main() -> Result<()> {
             eprintln!("Failed to load radio stations: {}", e);
         }
     }
-    // Wait a bit to see the message before TUI starts
+    // Delay to allow user to read the message
     std::thread::sleep(std::time::Duration::from_secs(2));
 
     // Redirect stderr to avoid TUI corruption

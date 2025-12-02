@@ -53,8 +53,8 @@ fn test_apply_args_file_path() {
         app.current_dir.canonicalize().unwrap(),
         dir.path().canonicalize().unwrap()
     );
-    // We can't easily check if it's playing because play_file uses rodio which might fail or be async/threaded
-    // But we can check if the item is selected
+    // play_file uses rodio which might fail or be async/threaded
+    // Check if the item is selected
     assert!(
         app.items
             .iter()
@@ -73,7 +73,7 @@ fn test_apply_args_file_path_with_spaces() {
     // If the user passes /path/to/test file.mp3 without quotes,
     // shell gives: /path/to/test, file.mp3
 
-    // Let's split the full path by space to simulate what clap receives
+    // Split the full path by space to simulate what clap receives
     let parts: Vec<String> = full_path_str.split(' ').map(|s| s.to_string()).collect();
 
     let args = Args {

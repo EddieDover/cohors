@@ -59,24 +59,26 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
 
       - name: Cache Rust toolchain and build artifacts
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          cache-all-crates: true
           save-if: true
+          shared-key: "llvm-cov"
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@main
-
-      - name: Install tarpaulin
-        run: cargo binstall cargo-tarpaulin --no-confirm
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Generate coverage
         run: |
-          cargo tarpaulin --verbose --workspace --all-features --timeout 120 \
-            --exclude-files src/main.rs src/tests.rs src/*/tests.rs \
-            --out xml --out html --output-dir ./coverage
+          mkdir -p coverage
+          cargo llvm-cov --verbose --workspace --all-features \
+            --ignore-filename-regex "src/main.rs|src/tests.rs|src/.*/tests.rs|packaging/.*" \
+            --cobertura --output-path coverage/cobertura.xml
           echo "COVERAGE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura.xml | head -1 | awk '{print int($1*100)}')" >> $GITHUB_ENV
 
       - name: Parse per-file coverage
@@ -183,8 +185,8 @@ jobs:
             <details>
             <summary>How to improve coverage</summary>
 
-            1. Run locally: \`cargo tarpaulin --out html\`
-            2. Open \`tarpaulin-report.html\` to see uncovered lines
+            1. Run locally: \`cargo llvm-cov --html\`
+            2. Open \`coverage/html/index.html\` to see uncovered lines
             3. Focus on files with ⚠️ - they need more tests
             4. Add tests for uncovered code paths
             5. Re-run: \`cargo test\` to verify
@@ -233,7 +235,6 @@ jobs:
           name: code-coverage-report
           path: |
             coverage/cobertura.xml
-            coverage/tarpaulin-report.html
 
       - name: Fail if coverage is below threshold
         if: steps.coverage-check.outputs.pass == 'false'
