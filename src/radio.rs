@@ -1,3 +1,6 @@
+use crate::config::{
+    AppConfig, IndividualStationConfig, RadioConfig, RadioSourceConfig, StationMapping,
+};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,90 +25,18 @@ pub struct RadioStation {
     pub last_playing: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct RadioConfig {
-    #[serde(default)]
-    pub sources: Vec<RadioSourceConfig>,
-    #[serde(default, rename = "stations")]
-    pub individual_stations: Vec<IndividualStationConfig>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct IndividualStationConfig {
-    pub name: String,
-    pub station_url: String,
-    pub description: Option<String>,
-    pub homepage: Option<String>,
-    pub tags: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct RadioSourceConfig {
-    pub title: String,
-    pub json_url: String,
-    pub container: Option<String>,
-    pub mapping: StationMapping,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct StationMapping {
-    pub station_name: String,
-    pub station_url: String,
-    pub description: Option<String>,
-    pub homepage: Option<String>,
-    pub tags: Option<String>,
-    #[serde(rename = "lastPlaying")]
-    pub last_playing: Option<String>,
-}
-
-pub fn load_config(
-    custom_path: Option<PathBuf>,
-    home_dir: Option<PathBuf>,
-    current_dir: Option<PathBuf>,
-) -> Result<RadioConfig> {
-    // Check custom path first
-    if let Some(path) = custom_path {
-        if path.exists() {
-            let content = fs::read_to_string(path)?;
-            let config: RadioConfig = serde_json::from_str(&content)?;
-            return Ok(config);
-        } else {
-            anyhow::bail!("Custom config file not found: {:?}", path);
-        }
-    }
-
-    // Check ~/.config/cohors/stations.config.json
-    let home = home_dir.or_else(|| std::env::var("HOME").ok().map(PathBuf::from));
-    if let Some(h) = home {
-        let config_path = h.join(".config/cohors/stations.config.json");
-        if config_path.exists() {
-            let content = fs::read_to_string(config_path)?;
-            let config: RadioConfig = serde_json::from_str(&content)?;
-            return Ok(config);
-        }
-    }
-
-    // Check ./stations.config.json
-    let cwd = current_dir.unwrap_or_else(|| PathBuf::from("."));
-    let local_path = cwd.join("stations.config.json");
-    if local_path.exists() {
-        let content = fs::read_to_string(local_path)?;
-        let config: RadioConfig = serde_json::from_str(&content)?;
-        return Ok(config);
-    }
-
-    anyhow::bail!(
-        "Config file stations.config.json not found in ~/.config/cohors/ or current directory"
-    )
+pub fn load_config() -> Result<RadioConfig> {
+    // Otherwise load AppConfig
+    let app_config = AppConfig::load()?;
+    Ok(app_config.radio)
 }
 
 pub async fn fetch_all_stations(
-    config_path: Option<PathBuf>,
     home_dir: Option<PathBuf>,
     invalidate_cache: bool,
     silent: bool,
 ) -> Result<Vec<RadioGroup>> {
-    let config = load_config(config_path, home_dir.clone(), None)?;
+    let config = load_config()?;
     let mut groups = Vec::new();
 
     // Process individual stations first
@@ -354,51 +285,12 @@ mod tests;
 #[cfg(test)]
 mod tests_export;
 
-pub fn resolve_config_path(
-    custom_path: Option<PathBuf>,
-    home_dir: Option<PathBuf>,
-    current_dir: Option<PathBuf>,
-) -> PathBuf {
-    if let Some(path) = custom_path {
-        return path;
-    }
-
-    let home = home_dir.or_else(|| std::env::var("HOME").ok().map(PathBuf::from));
-    if let Some(h) = &home {
-        let config_path = h.join(".config/cohors/stations.config.json");
-        if config_path.exists() {
-            return config_path;
-        }
-    }
-
-    let cwd = current_dir.unwrap_or_else(|| PathBuf::from("."));
-    let local_path = cwd.join("stations.config.json");
-    if local_path.exists() {
-        return local_path;
-    }
-
-    // Default to ~/.config/cohors/stations.config.json if nothing exists
-    if let Some(h) = home {
-        return h.join(".config/cohors/stations.config.json");
-    }
-
-    // Fallback to local
-    cwd.join("stations.config.json")
-}
-
-pub fn add_station_to_config(config_path: &std::path::Path, station: &RadioStation) -> Result<()> {
-    let mut config: RadioConfig = if config_path.exists() {
-        let content = fs::read_to_string(config_path)?;
-        serde_json::from_str(&content)?
-    } else {
-        RadioConfig {
-            sources: Vec::new(),
-            individual_stations: Vec::new(),
-        }
-    };
+pub fn add_station_to_config(station: &RadioStation) -> Result<()> {
+    let mut config = AppConfig::load()?;
 
     // Prevent duplicates
     if config
+        .radio
         .individual_stations
         .iter()
         .any(|s| s.station_url == station.url)
@@ -406,40 +298,27 @@ pub fn add_station_to_config(config_path: &std::path::Path, station: &RadioStati
         return Ok(()); // Already exists
     }
 
-    config.individual_stations.push(IndividualStationConfig {
-        name: station.name.clone(),
-        station_url: station.url.clone(),
-        description: station.description.clone(),
-        homepage: station.homepage.clone(),
-        tags: station.tags.clone(),
-    });
+    config
+        .radio
+        .individual_stations
+        .push(IndividualStationConfig {
+            name: station.name.clone(),
+            station_url: station.url.clone(),
+            description: station.description.clone(),
+            homepage: station.homepage.clone(),
+            tags: station.tags.clone(),
+        });
 
-    // Ensure directory exists
-    if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let content = serde_json::to_string_pretty(&config)?;
-    fs::write(config_path, content)?;
+    config.save()?;
     Ok(())
 }
 
-pub fn add_source_to_config(
-    config_path: &std::path::Path,
-    source: &RadioSourceConfig,
-) -> Result<()> {
-    let mut config: RadioConfig = if config_path.exists() {
-        let content = fs::read_to_string(config_path)?;
-        serde_json::from_str(&content)?
-    } else {
-        RadioConfig {
-            sources: Vec::new(),
-            individual_stations: Vec::new(),
-        }
-    };
+pub fn add_source_to_config(source: &RadioSourceConfig) -> Result<()> {
+    let mut config = AppConfig::load()?;
 
     // Prevent duplicates
     if config
+        .radio
         .sources
         .iter()
         .any(|s| s.title == source.title || s.json_url == source.json_url)
@@ -447,62 +326,44 @@ pub fn add_source_to_config(
         return Ok(()); // Already exists
     }
 
-    config.sources.push(source.clone());
+    config.radio.sources.push(source.clone());
 
-    // Ensure directory exists
-    if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let content = serde_json::to_string_pretty(&config)?;
-    fs::write(config_path, content)?;
+    config.save()?;
     Ok(())
 }
 
-pub fn edit_station_in_config(
-    config_path: &std::path::Path,
-    old_url: &str,
-    station: &RadioStation,
-) -> Result<()> {
-    if !config_path.exists() {
-        return Ok(());
-    }
-    let content = fs::read_to_string(config_path)?;
-    let mut config: RadioConfig = serde_json::from_str(&content)?;
+pub fn edit_station_in_config(old_url: &str, station: &RadioStation) -> Result<()> {
+    let mut config = AppConfig::load()?;
 
     if let Some(idx) = config
+        .radio
         .individual_stations
         .iter()
         .position(|s| s.station_url == old_url)
     {
-        config.individual_stations[idx] = IndividualStationConfig {
+        config.radio.individual_stations[idx] = IndividualStationConfig {
             name: station.name.clone(),
             station_url: station.url.clone(),
             description: station.description.clone(),
             homepage: station.homepage.clone(),
             tags: station.tags.clone(),
         };
-        let content = serde_json::to_string_pretty(&config)?;
-        fs::write(config_path, content)?;
+        config.save()?;
     }
     Ok(())
 }
 
-pub fn edit_source_in_config(
-    config_path: &std::path::Path,
-    old_title: &str,
-    source: &RadioSourceConfig,
-) -> Result<()> {
-    if !config_path.exists() {
-        return Ok(());
-    }
-    let content = fs::read_to_string(config_path)?;
-    let mut config: RadioConfig = serde_json::from_str(&content)?;
+pub fn edit_source_in_config(old_title: &str, source: &RadioSourceConfig) -> Result<()> {
+    let mut config = AppConfig::load()?;
 
-    if let Some(idx) = config.sources.iter().position(|s| s.title == old_title) {
-        config.sources[idx] = source.clone();
-        let content = serde_json::to_string_pretty(&config)?;
-        fs::write(config_path, content)?;
+    if let Some(idx) = config
+        .radio
+        .sources
+        .iter()
+        .position(|s| s.title == old_title)
+    {
+        config.radio.sources[idx] = source.clone();
+        config.save()?;
     }
     Ok(())
 }
