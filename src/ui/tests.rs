@@ -72,16 +72,6 @@ fn test_ui_draw_about() {
 }
 
 #[test]
-fn test_ui_draw() {
-    let backend = TestBackend::new(100, 50);
-    let mut terminal = Terminal::new(backend).unwrap();
-    let mut app = App::new_test();
-
-    // Just ensure it doesn't panic
-    terminal.draw(|f| draw(f, &mut app)).unwrap();
-}
-
-#[test]
 fn test_ui_draw_error() {
     let backend = TestBackend::new(100, 50);
     let mut terminal = Terminal::new(backend).unwrap();

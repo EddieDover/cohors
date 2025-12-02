@@ -188,7 +188,7 @@ pub async fn fetch_stations(
     } else if let Some(path) = &cache_path
         && path.exists()
     {
-        // Check if file is less than 1 week old
+        // Verify file age is less than 1 week
         if let Ok(metadata) = fs::metadata(path)
             && let Ok(modified) = metadata.modified()
         {
@@ -397,7 +397,7 @@ pub fn add_station_to_config(config_path: &std::path::Path, station: &RadioStati
         }
     };
 
-    // Check if station already exists
+    // Prevent duplicates
     if config
         .individual_stations
         .iter()
@@ -438,7 +438,7 @@ pub fn add_source_to_config(
         }
     };
 
-    // Check if source already exists
+    // Prevent duplicates
     if config
         .sources
         .iter()

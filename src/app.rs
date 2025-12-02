@@ -1298,7 +1298,7 @@ impl App {
         let mut current_idx = 0;
 
         for group in &self.filtered_radio_groups {
-            // Check if the group header is selected
+            // Determine if the group header is selected
             if current_idx == selected_idx {
                 if group.title != "Custom Stations"
                     && let Some(config_path) = &self.config_path
@@ -1324,7 +1324,7 @@ impl App {
             current_idx += 1;
 
             if group.is_expanded {
-                // Check if a station within this group is selected
+                // Determine if a station within this group is selected
                 if selected_idx < current_idx + group.stations.len() {
                     let station_idx = selected_idx - current_idx;
                     let station = &group.stations[station_idx];
@@ -1610,9 +1610,7 @@ pub fn run_app<B: Backend, E: EventSource>(
                                 AppMode::Radio => AppMode::Favorites,
                                 AppMode::Favorites => AppMode::FileSystem,
                             };
-                            // Reset search when switching modes?
-                            // Maybe better to keep it separate or clear it.
-                            // Let's clear it for simplicity.
+                            // Reset search when switching modes.
                             app.cancel_search();
                         }
                         KeyCode::Char('j') | KeyCode::Down => app.next(),

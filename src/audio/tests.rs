@@ -1,5 +1,5 @@
 use super::*;
-use rodio::source::{SineWave, Source, SeekError};
+use rodio::source::{SeekError, SineWave, Source};
 use std::sync::{Arc, Mutex};
 
 #[test]
@@ -33,9 +33,8 @@ fn test_audio_analyzer() {
     assert_eq!(data.len(), 8);
     // Since it's a sine wave at 440Hz, it should be in the "Mid" or "LowM" range.
     // 440Hz is in 250-500 range (LowM).
-    // Let's check if any bar is > 0.
     let _total_energy: u64 = data.iter().map(|(_, v)| *v).sum();
-    // Note: FFT might fail or produce 0 if scaling is weird, but usually it works.
+    // FFT might fail or produce 0 if scaling is weird, but usually it works.
     // We just assert it runs without panic.
 }
 
@@ -58,15 +57,27 @@ fn test_audio_analyzer_seek() {
 struct NoSeekSource;
 impl Iterator for NoSeekSource {
     type Item = f32;
-    fn next(&mut self) -> Option<f32> { Some(0.0) }
+    fn next(&mut self) -> Option<f32> {
+        Some(0.0)
+    }
 }
 impl Source for NoSeekSource {
-    fn current_frame_len(&self) -> Option<usize> { None }
-    fn channels(&self) -> u16 { 1 }
-    fn sample_rate(&self) -> u32 { 44100 }
-    fn total_duration(&self) -> Option<Duration> { None }
+    fn current_frame_len(&self) -> Option<usize> {
+        None
+    }
+    fn channels(&self) -> u16 {
+        1
+    }
+    fn sample_rate(&self) -> u32 {
+        44100
+    }
+    fn total_duration(&self) -> Option<Duration> {
+        None
+    }
     fn try_seek(&mut self, _: Duration) -> Result<(), rodio::source::SeekError> {
-        Err(SeekError::NotSupported { underlying_source: "NoSeekSource" })
+        Err(SeekError::NotSupported {
+            underlying_source: "NoSeekSource",
+        })
     }
 }
 

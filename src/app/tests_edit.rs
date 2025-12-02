@@ -332,13 +332,9 @@ fn test_reload_stations_integration() {
     // Check if receiver is set
     assert!(app.station_receiver.is_some());
 
-    // Wait a bit and check on_tick (mocking the thread result might be hard without dependency injection,
-    // but we can check if the receiver is processed)
-
     // Since reload_stations spawns a thread that does real IO or fails,
     // we might just check that the receiver exists.
-    // To test on_tick handling, we can manually inject a receiver.
-
+    // Manually inject a receiver to test on_tick handling.
     let (tx, rx) = std::sync::mpsc::channel();
     app.station_receiver = Some(rx);
 

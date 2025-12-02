@@ -288,7 +288,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
                     for station in &group.stations {
                         if current_idx >= end {
-                            // If we found the selected item, we can break
+                            // Break if the selected item is found
                             if selected_item_info.is_some() {
                                 break 'outer;
                             }

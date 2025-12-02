@@ -405,10 +405,6 @@ fn test_next_track_loop_all() {
 
     // Next track should wrap to first
     app.next_track();
-    // Note: play_file logic might fail if file doesn't exist, but we check if it *tried* to play p1
-    // Since play_file sets current_track, we can check that.
-    // However, play_file checks if file exists before setting current_track fully?
-    // Let's check play_file implementation.
     // play_file sets current_track = Some(path.clone()) at the very beginning.
     assert_eq!(app.current_track, Some(p1));
 }
@@ -423,19 +419,14 @@ fn test_auto_advance_loop_track() {
     app.current_track = Some(p1.clone());
     app.is_paused = false;
 
-    // Mock sink being empty is hard because Sink::new_idle() returns a sink that is always empty?
     // If sink is empty, on_tick should trigger replay.
-
-    // We need to ensure play_file is called.
     // play_file sets playback_start to Some(Instant::now()).
     app.playback_start = None;
 
     app.on_tick();
 
     // If it replayed, playback_start should be set.
-    // However, play_file also tries to open the file. If file doesn't exist, it might fail partway.
-    // But current_track is set at start of play_file.
-    // Let's create a real file for this test.
+    // Create a real file for this test.
     let temp = tempdir().unwrap();
     let file_path = temp.path().join("test.mp3");
     fs::File::create(&file_path).unwrap();
@@ -585,11 +576,7 @@ fn test_play_file_no_sink() {
 fn test_play_file_not_found() {
     let mut app = App::new_test();
     app.play_file(PathBuf::from("non_existent.mp3"));
-    // Since play_file checks fs::File::open, it should fail silently or log error?
-    // The current implementation:
-    // if let Ok(file) = fs::File::open(&path) { ... }
-    // It doesn't set last_error if file open fails. It just does nothing.
-    // But it sets current_track.
+    // play_file checks fs::File::open, but it sets current_track before that.
     assert_eq!(app.current_track, Some(PathBuf::from("non_existent.mp3")));
     assert!(app.track_duration.is_none());
 }
