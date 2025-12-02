@@ -1372,3 +1372,25 @@ fn test_add_modal_validation() {
         Some(AddModalState::InputSource { .. })
     ));
 }
+
+#[test]
+fn test_update_mpris_state() {
+    let mut app = App::new_test();
+    let mpris_state =
+        std::sync::Arc::new(std::sync::Mutex::new(crate::mpris::MprisState::default()));
+    app.mpris_state = Some(mpris_state.clone());
+
+    app.volume = 0.8;
+    app.loop_mode = LoopMode::Track;
+    app.current_track = Some(PathBuf::from("test_song.mp3"));
+    app.track_duration = Some(Duration::from_secs(180));
+
+    app.update_mpris();
+
+    let state = mpris_state.lock().unwrap();
+    // Use a larger epsilon for f32 to f64 conversion
+    assert!((state.volume - 0.8).abs() < 1e-6);
+    assert!(matches!(state.loop_status, mpris_server::LoopStatus::Track));
+    assert_eq!(state.title, "test_song.mp3");
+    assert_eq!(state.duration, Some(Duration::from_secs(180)));
+}

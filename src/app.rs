@@ -1641,5 +1641,3 @@ pub fn run_app<B: Backend, E: EventSource>(
 mod tests;
 #[cfg(test)]
 mod tests_edit;
-#[cfg(test)]
-mod tests_mpris_logic;
