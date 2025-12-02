@@ -7,6 +7,7 @@ A TUI music player written in Rust.
 - Audio visualization (Spectrum Analyzer)
 - Internet Radio support (Configurable via radio.json)
 - Supports MPRIS (media playback controls on a system-wide level)
+- Built-in management for Radio Stations and Sources
 
 ## Disclaimer
 
@@ -17,7 +18,7 @@ I'm happy to hear your feedback and feature requests! I'm also very open to PRs 
 | Key | Action |
 | --- | --- |
 | `q` | Quit Application |
-| `TAB` | Toggle Mode (Files / Radio) |
+| `TAB` | Toggle Mode (Files / Radio / Favorites) |
 | `/` | Search / Filter |
 | `?` | Toggle Help / About |
 | `j` / `↓` | Move Selection Down |
@@ -34,6 +35,7 @@ I'm happy to hear your feedback and feature requests! I'm also very open to PRs 
 | `x` | Export selected radio station to config |
 | `a` | Add Station/Source |
 | `e` | Edit Station/Source |
+| `f` | Toggle Favorite |
 
 ## Command Line Arguments
 
@@ -49,9 +51,31 @@ I'm happy to hear your feedback and feature requests! I'm also very open to PRs 
 | `-V`, `--version` | Print version information |
 | `[PATH]` | _(Optional)_ Path to a file or directory to play on startup |
 
-## Radio Configuration
+## Managing Stations & Sources
 
-Cohors supports internet radio by fetching station lists from JSON APIs. You can configure multiple sources in `stations.config.json`. The station data is downloaded and cached for one week. To invalidate the cache and force a re-download, use the `--invalidate-cache` argument.
+You can manage your radio stations and sources directly within the application without manually editing the JSON configuration file.
+
+### Adding Items
+Press `a` to open the Add menu. You will be prompted to choose what to add:
+- Press `s` to add a **Single Station**.
+- Press `r` to add a **Source** (a dynamic list of stations from a JSON URL).
+
+### Editing Items
+To edit an existing item, navigate to it in the Radio list and press `e`.
+- **Custom Stations**: You can edit any station that you've added manually (under "Custom Stations").
+- **Sources**: Select the source header (the group title) to edit the source configuration.
+
+### Input Dialogs
+When adding or editing, a dialog will appear with several fields.
+- **Navigation**: Use `Tab` / `Down` to move to the next field, and `Shift+Tab` / `Up` to move back.
+- **Saving**: Press `Enter` to save your changes.
+- **Canceling**: Press `Esc` to close the dialog without saving.
+
+Changes are automatically saved to your `stations.config.json` file.
+
+## Radio Configuration (Manual)
+
+While the built-in UI handles most tasks, you can still manually configure sources in `stations.config.json`. The station data is downloaded and cached for one week. To invalidate the cache and force a re-download, use the `--invalidate-cache` argument.
 
 The application looks for the configuration file in the following order:
 1. The path specified by `--station-file <PATH>`
