@@ -65,13 +65,15 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          cache-all-crates: true
           save-if: true
+          shared-key: "tarpaulin"
 
       - name: Generate coverage
         run: |
-          cargo tarpaulin --verbose --workspace --all-features --timeout 120 \
+          cargo tarpaulin --skip-clean --workspace --all-features --timeout 120 \
             --exclude-files src/main.rs src/tests.rs src/*/tests.rs \
-            --out xml --out html --output-dir ./coverage
+            --out xml --output-dir ./coverage
           echo "COVERAGE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura.xml | head -1 | awk '{print int($1*100)}')" >> $GITHUB_ENV
 
       - name: Parse per-file coverage
