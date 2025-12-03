@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/EddieDover/cohors/compare/v0.7.0...v0.8.0) (2025-12-03)
+
+
+### Miscellaneous Chores
+
+* release 0.8.0 ([614af97](https://github.com/EddieDover/cohors/commit/614af9792ad8b94b789f303757744ad8275cb00a))
+
 ## [0.7.0](https://github.com/EddieDover/cohors/compare/v0.6.0...v0.7.0) (2025-12-01)
 
 
