@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/EddieDover/cohors/compare/v0.8.0...v0.8.1) (2025-12-08)
+
+
+### Bug Fixes
+
+* fix key repeat rate for Windows users ([#58](https://github.com/EddieDover/cohors/issues/58)) ([1fafb3c](https://github.com/EddieDover/cohors/commit/1fafb3c6d14d0c6c1b52d5346c2abf2066b5916a))
+
 ## [0.8.0](https://github.com/EddieDover/cohors/compare/v0.7.0...v0.8.0) (2025-12-03)
 
 
