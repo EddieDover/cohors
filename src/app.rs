@@ -4,7 +4,7 @@ use crate::favorites::Favorites;
 use crate::mpris::MprisCommand;
 use crate::radio::{RadioGroup, RadioStation};
 use crate::ui;
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::widgets::ListState;
 use ratatui::{Terminal, backend::Backend};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
@@ -1562,62 +1562,137 @@ pub fn run_app<B: Backend, E: EventSource>(
         if events.poll(Duration::from_millis(50))? {
             let event = events.read()?;
             if let Event::Key(key) = event {
-                if app.add_modal_state.is_some() {
-                    app.handle_add_modal_input(key.code);
+                if key.kind == KeyEventKind::Release {
+                    continue;
+                }
+
+                let is_repeat = key.kind == KeyEventKind::Repeat;
+
+                // Check if we are in modal state and if we should process the key
+                let (in_modal, modal_should_process) = if let Some(state) = &app.add_modal_state {
+                    (
+                        true,
+                        !is_repeat
+                            || match state {
+                                AddModalState::Selection => false,
+                                AddModalState::InputStation { .. }
+                                | AddModalState::InputSource { .. } => {
+                                    matches!(key.code, KeyCode::Char(_) | KeyCode::Backspace)
+                                }
+                            },
+                    )
+                } else {
+                    (false, false)
+                };
+
+                if in_modal {
+                    if modal_should_process {
+                        app.handle_add_modal_input(key.code);
+                    }
                 } else if app.is_searching {
                     match key.code {
-                        KeyCode::Esc => app.cancel_search(),
-                        KeyCode::Enter => app.submit_search(),
+                        KeyCode::Esc => {
+                            if !is_repeat {
+                                app.cancel_search()
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if !is_repeat {
+                                app.submit_search()
+                            }
+                        }
                         KeyCode::Backspace => app.on_search_backspace(),
                         KeyCode::Char(c) => app.on_search_input(c),
                         _ => {}
                     }
                 } else if app.show_help {
                     match key.code {
-                        KeyCode::Char('?') | KeyCode::Esc => app.show_help = false,
+                        KeyCode::Char('?') | KeyCode::Esc => {
+                            if !is_repeat {
+                                app.show_help = false
+                            }
+                        }
                         KeyCode::Char('q') => return Ok(()),
                         _ => {}
                     }
                 } else {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Char('?') => app.show_help = true,
+                        KeyCode::Char('?') => {
+                            if !is_repeat {
+                                app.show_help = true
+                            }
+                        }
                         KeyCode::Char('/') => {
-                            app.is_searching = true;
-                            app.search_query.clear();
-                            app.update_search_results();
+                            if !is_repeat {
+                                app.is_searching = true;
+                                app.search_query.clear();
+                                app.update_search_results();
+                            }
                         }
                         KeyCode::Esc => {
-                            if !app.search_query.is_empty() {
+                            if !is_repeat && !app.search_query.is_empty() {
                                 app.cancel_search();
                             }
                         }
                         KeyCode::Char('h') => {
-                            app.show_hidden = !app.show_hidden;
-                            app.load_directory();
+                            if !is_repeat {
+                                app.show_hidden = !app.show_hidden;
+                                app.load_directory();
+                            }
                         }
                         KeyCode::Tab => {
-                            app.mode = match app.mode {
-                                AppMode::FileSystem => AppMode::Radio,
-                                AppMode::Radio => AppMode::Favorites,
-                                AppMode::Favorites => AppMode::FileSystem,
-                            };
-                            // Reset search when switching modes.
-                            app.cancel_search();
+                            if !is_repeat {
+                                app.mode = match app.mode {
+                                    AppMode::FileSystem => AppMode::Radio,
+                                    AppMode::Radio => AppMode::Favorites,
+                                    AppMode::Favorites => AppMode::FileSystem,
+                                };
+                                // Reset search when switching modes.
+                                app.cancel_search();
+                            }
                         }
                         KeyCode::Char('j') | KeyCode::Down => app.next(),
                         KeyCode::Char('k') | KeyCode::Up => app.previous(),
                         KeyCode::Char('+') | KeyCode::Char('=') => app.change_volume(0.05),
-                        KeyCode::Char('l') => app.toggle_loop(),
-                        KeyCode::Char('f') => app.toggle_favorite(),
+                        KeyCode::Char('l') => {
+                            if !is_repeat {
+                                app.toggle_loop()
+                            }
+                        }
+                        KeyCode::Char('f') => {
+                            if !is_repeat {
+                                app.toggle_favorite()
+                            }
+                        }
                         KeyCode::Char('-') => app.change_volume(-0.05),
                         KeyCode::Left => app.previous_track(),
                         KeyCode::Right => app.next_track(),
-                        KeyCode::Char('x') => app.save_radio_station(),
-                        KeyCode::Char('a') => app.open_add_modal(),
-                        KeyCode::Char('e') => app.open_edit_modal(),
-                        KeyCode::Char(' ') => app.toggle_pause(),
-                        KeyCode::Enter => app.enter_directory(),
+                        KeyCode::Char('x') => {
+                            if !is_repeat {
+                                app.save_radio_station()
+                            }
+                        }
+                        KeyCode::Char('a') => {
+                            if !is_repeat {
+                                app.open_add_modal()
+                            }
+                        }
+                        KeyCode::Char('e') => {
+                            if !is_repeat {
+                                app.open_edit_modal()
+                            }
+                        }
+                        KeyCode::Char(' ') => {
+                            if !is_repeat {
+                                app.toggle_pause()
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if !is_repeat {
+                                app.enter_directory()
+                            }
+                        }
                         KeyCode::Backspace => app.go_up(),
                         _ => {}
                     }

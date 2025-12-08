@@ -33,8 +33,9 @@ jobs:
         with:
           cache-on-failure: true
 
-      - name: Run tests
-        run: cargo test --verbose --workspace
+      # We're already running tests on coverage so this is kind of redundant I think
+      # - name: Run tests
+      #   run: cargo test --verbose --workspace
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
