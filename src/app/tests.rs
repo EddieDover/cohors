@@ -6,7 +6,7 @@ use tempfile::tempdir;
 #[test]
 fn test_app_initialization() {
     let app = App::new_test();
-    assert_eq!(app.volume, 1.0);
+    assert_eq!(app.volume, 0.5);
     assert!(matches!(app.mode, AppMode::FileSystem));
 }
 

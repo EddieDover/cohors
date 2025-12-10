@@ -134,7 +134,7 @@ impl App {
             Err(e) => (None, None, None, Some(format!("Audio init error: {}", e))),
         };
 
-        let volume = 1.0;
+        let volume = 0.5;
         if let Some(s) = &sink {
             s.set_volume(volume);
         }
@@ -209,7 +209,7 @@ impl App {
             _stream: None,
             _stream_handle: None,
             sink: Some(sink),
-            volume: 1.0,
+            volume: 0.5,
             current_track: None,
             is_paused: false,
             last_error: None,
