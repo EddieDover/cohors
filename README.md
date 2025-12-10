@@ -191,3 +191,26 @@ For the configuration above, the `json_url` (`https://api.example.com/stations.j
 
 The `container` field is set to `"stations"`, telling Cohors to look inside that property for the list. The `mapping` then connects fields like `name` to `station_name` and `stream_url` to `station_url`.
 
+
+### Screenshots
+
+<details>
+   <summary>Files View</summary>
+
+<img width="1723" height="725" alt="image" src="https://github.com/user-attachments/assets/807dc773-fdf7-4894-b185-dd3372e861eb" />
+
+</details>
+
+<details>
+   <summary>Station View</summary>
+
+<img width="1723" height="725" alt="image" src="https://github.com/user-attachments/assets/0b8dc80c-a060-4424-aedf-5cc86600adbd" />
+
+</details>
+
+<details>
+   <summary>Add/Edit Modal</summary>
+
+<img width="1714" height="720" alt="image" src="https://github.com/user-attachments/assets/22680c1b-1d10-4504-a81f-72f0dbc6f9c0" />
+
+</details>
