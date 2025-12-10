@@ -367,3 +367,28 @@ pub fn edit_source_in_config(old_title: &str, source: &RadioSourceConfig) -> Res
     }
     Ok(())
 }
+
+pub fn delete_station_from_config(url: &str) -> Result<()> {
+    let mut config = AppConfig::load()?;
+
+    if let Some(idx) = config
+        .radio
+        .individual_stations
+        .iter()
+        .position(|s| s.station_url == url)
+    {
+        config.radio.individual_stations.remove(idx);
+        config.save()?;
+    }
+    Ok(())
+}
+
+pub fn delete_source_from_config(title: &str) -> Result<()> {
+    let mut config = AppConfig::load()?;
+
+    if let Some(idx) = config.radio.sources.iter().position(|s| s.title == title) {
+        config.radio.sources.remove(idx);
+        config.save()?;
+    }
+    Ok(())
+}

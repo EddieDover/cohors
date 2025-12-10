@@ -1,6 +1,6 @@
 # Maintainer: Eddie Dover <ed@eddiedover.dev>
 pkgname=cohors
-pkgver=0.8.0
+pkgver=0.8.1
 pkgrel=1
 pkgdesc="A terminal based music player and internet radio streaming application"
 arch=('x86_64')
@@ -10,7 +10,7 @@ depends=('alsa-lib' 'gcc-libs')
 makedepends=('cargo')
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('480a459f9ec8e9b46d93b1d36bbb4c39183c8cd14406df5fcba515d94affd77a')
+sha256sums=('5ab8bfd0e2eef30e5ad94908375bfa5d978ab7348594f34a3a570090b704a1bf')
 
 prepare() {
   cd "$pkgname-$pkgver"
