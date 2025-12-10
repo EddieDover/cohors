@@ -40,6 +40,11 @@ pub enum LoopMode {
     All,
 }
 
+pub enum ConfirmationContext {
+    DeleteStation(String),
+    DeleteSource(String),
+}
+
 pub enum AddModalState {
     Selection,
     InputStation {
@@ -62,6 +67,10 @@ pub enum AddModalState {
         map_tags: String,
         focused_field: usize,
         original_title: Option<String>,
+    },
+    Confirmation {
+        message: String,
+        context: ConfirmationContext,
     },
 }
 
@@ -1266,7 +1275,103 @@ impl App {
                     }
                     _ => {}
                 },
+                AddModalState::Confirmation {
+                    message: _,
+                    context,
+                } => match key {
+                    KeyCode::Char('y') | KeyCode::Enter => {
+                        // Clone context to avoid borrow checker issues if we need to use self
+                        let ctx = match context {
+                            ConfirmationContext::DeleteStation(url) => {
+                                ConfirmationContext::DeleteStation(url.clone())
+                            }
+                            ConfirmationContext::DeleteSource(title) => {
+                                ConfirmationContext::DeleteSource(title.clone())
+                            }
+                        };
+                        self.confirm_delete(&ctx);
+                    }
+                    KeyCode::Char('n') | KeyCode::Esc => {
+                        self.add_modal_state = None;
+                    }
+                    _ => {}
+                },
             }
+        }
+    }
+
+    pub fn open_delete_modal(&mut self) {
+        if self.mode != AppMode::Radio {
+            return;
+        }
+
+        let selected_idx = self.radio_state.selected().unwrap_or(0);
+        let mut current_idx = 0;
+
+        for group in &self.filtered_radio_groups {
+            // Determine if the group header is selected
+            if current_idx == selected_idx {
+                if group.title != "Custom Stations"
+                    && let Ok(config) = crate::radio::load_config()
+                    && let Some(source) = config.sources.iter().find(|s| s.title == group.title)
+                {
+                    self.add_modal_state = Some(AddModalState::Confirmation {
+                        message: format!(
+                            "Are you sure you want to delete source '{}'?",
+                            source.title
+                        ),
+                        context: ConfirmationContext::DeleteSource(source.title.clone()),
+                    });
+                }
+                return;
+            }
+            current_idx += 1;
+
+            if group.is_expanded {
+                // Determine if a station within this group is selected
+                if selected_idx < current_idx + group.stations.len() {
+                    let station_idx = selected_idx - current_idx;
+                    let station = &group.stations[station_idx];
+
+                    // Only allow deleting if it's in the "Custom Stations" group
+                    if group.title == "Custom Stations"
+                        && let Ok(config) = crate::radio::load_config()
+                        && let Some(s) = config
+                            .individual_stations
+                            .iter()
+                            .find(|s| s.station_url == station.url)
+                    {
+                        self.add_modal_state = Some(AddModalState::Confirmation {
+                            message: format!(
+                                "Are you sure you want to delete station '{}'?",
+                                s.name
+                            ),
+                            context: ConfirmationContext::DeleteStation(s.station_url.clone()),
+                        });
+                    }
+                    return;
+                }
+                current_idx += group.stations.len();
+            }
+        }
+    }
+
+    fn confirm_delete(&mut self, context: &ConfirmationContext) {
+        let result = match context {
+            ConfirmationContext::DeleteStation(url) => {
+                crate::radio::delete_station_from_config(url)
+            }
+            ConfirmationContext::DeleteSource(title) => {
+                crate::radio::delete_source_from_config(title)
+            }
+        };
+
+        if let Err(e) = result {
+            self.notification = Some((format!("Error: {}", e), Instant::now()));
+        } else {
+            self.notification = Some(("Deleted successfully".to_string(), Instant::now()));
+            self.add_modal_state = None;
+            self.reload_stations();
         }
     }
 
@@ -1579,6 +1684,7 @@ pub fn run_app<B: Backend, E: EventSource>(
                                 | AddModalState::InputSource { .. } => {
                                     matches!(key.code, KeyCode::Char(_) | KeyCode::Backspace)
                                 }
+                                AddModalState::Confirmation { .. } => false,
                             },
                     )
                 } else {
@@ -1693,7 +1799,15 @@ pub fn run_app<B: Backend, E: EventSource>(
                                 app.enter_directory()
                             }
                         }
-                        KeyCode::Backspace => app.go_up(),
+                        KeyCode::Backspace | KeyCode::Delete => {
+                            if app.mode == AppMode::Radio {
+                                if !is_repeat {
+                                    app.open_delete_modal();
+                                }
+                            } else if key.code == KeyCode::Backspace {
+                                app.go_up();
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -1704,5 +1818,7 @@ pub fn run_app<B: Backend, E: EventSource>(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_delete;
 #[cfg(test)]
 mod tests_edit;

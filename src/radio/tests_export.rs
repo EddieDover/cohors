@@ -100,6 +100,82 @@ fn test_add_station_to_config_duplicate() {
 }
 
 #[test]
+fn test_delete_station_from_config() {
+    let temp = TempDir::new().unwrap();
+    let config_dir = temp.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
+
+    let initial_config = AppConfig {
+        volume: None,
+        favorites: Default::default(),
+        radio: RadioConfig {
+            sources: Vec::new(),
+            individual_stations: vec![IndividualStationConfig {
+                name: "To Delete".to_string(),
+                station_url: "http://delete.com".to_string(),
+                description: None,
+                homepage: None,
+                tags: None,
+            }],
+        },
+    };
+
+    fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    let content = serde_json::to_string(&initial_config).unwrap();
+    fs::write(&config_path, content).unwrap();
+
+    with_xdg_config_home(&config_dir, || {
+        delete_station_from_config("http://delete.com").unwrap();
+
+        let content = fs::read_to_string(&config_path).unwrap();
+        let config: AppConfig = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(config.radio.individual_stations.len(), 0);
+    });
+}
+
+#[test]
+fn test_delete_source_from_config() {
+    let temp = TempDir::new().unwrap();
+    let config_dir = temp.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
+
+    let initial_config = AppConfig {
+        volume: None,
+        favorites: Default::default(),
+        radio: RadioConfig {
+            sources: vec![RadioSourceConfig {
+                title: "To Delete".to_string(),
+                json_url: "http://delete.com".to_string(),
+                container: None,
+                mapping: StationMapping {
+                    station_name: "name".to_string(),
+                    station_url: "url".to_string(),
+                    description: None,
+                    homepage: None,
+                    tags: None,
+                    last_playing: None,
+                },
+            }],
+            individual_stations: Vec::new(),
+        },
+    };
+
+    fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    let content = serde_json::to_string(&initial_config).unwrap();
+    fs::write(&config_path, content).unwrap();
+
+    with_xdg_config_home(&config_dir, || {
+        delete_source_from_config("To Delete").unwrap();
+
+        let content = fs::read_to_string(&config_path).unwrap();
+        let config: AppConfig = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(config.radio.sources.len(), 0);
+    });
+}
+
+#[test]
 fn test_edit_station_in_config() {
     let temp = TempDir::new().unwrap();
     let config_dir = temp.path().to_path_buf();

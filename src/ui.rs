@@ -716,6 +716,32 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                     .style(Style::default().fg(Color::Gray));
                 f.render_widget(help, chunks[6]);
             }
+            AddModalState::Confirmation {
+                message,
+                context: _,
+            } => {
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints(
+                        [
+                            Constraint::Length(3), // Message
+                            Constraint::Length(3), // Yes/No
+                        ]
+                        .as_ref(),
+                    )
+                    .margin(2)
+                    .split(inner);
+
+                let p1 = Paragraph::new(message.as_str())
+                    .alignment(ratatui::layout::Alignment::Center)
+                    .wrap(ratatui::widgets::Wrap { trim: true });
+
+                let p2 = Paragraph::new("Press 'y' or Enter to confirm, 'n' or Esc to cancel")
+                    .alignment(ratatui::layout::Alignment::Center);
+
+                f.render_widget(p1, chunks[0]);
+                f.render_widget(p2, chunks[1]);
+            }
         }
     }
 }
