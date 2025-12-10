@@ -59,10 +59,35 @@ Press `a` to open the Add menu. You will be prompted to choose what to add:
 - Press `s` to add a **Single Station**.
 - Press `r` to add a **Source** (a dynamic list of stations from a JSON URL).
 
+### Example - Adding a station from radio-browser.info
+
+1. Visit www.radio-browser.info and craft your search there. When finished, click the JSON button and copy the URL provided, for example: `https://de2.api.radio-browser.info/json/stations/search?limit=10&name=80s&hidebroken=true&order=clickcount&reverse=true`
+
+2. Open Cohors.
+2. Press `tab` until you reach the `Radio Stations` tab.
+3. Press `a` to add a new station/source.
+4. Press `r` to add a radio source and use these fields:
+
+   - Title: Anything you want
+   - JSON URL: The above URL
+   - Container: Leave empty, no mapping override is needed, the default matches.
+   - Map: Name - "name"
+   - Map: URL - "url"
+   - Map: Desc - "description"
+   - Map: Home - "homepage"
+   - Map: Tags - "tags"
+
+5. Press `Enter` to save and your category and stations should show up in the Radio Stations list
+
 ### Editing Items
 To edit an existing item, navigate to it in the Radio list and press `e`.
 - **Custom Stations**: You can edit any station that you've added manually (under "Custom Stations").
 - **Sources**: Select the source header (the group title) to edit the source configuration.
+
+### Deleting Items
+To delete an existing item, navigate to it in the Radio list and press 'backspace' or 'delete'.
+- **Custom Stations**: You can delete any station that you've added manually (under "Custom Stations").
+- **Sources**: Select the source header (the group title) to delete the source configuration.
 
 ### Input Dialogs
 When adding or editing, a dialog will appear with several fields.
@@ -94,7 +119,7 @@ Stations support the following fields:
  - `description` (Optional): A description of the station.
  - `homepage` (Optional): The station's home page.
 
-*Radio  stations can be export to your individual station list by pressing `x`. This is useful if you're using a JSON link  that could have rotating results based on properties.*
+*Radio  stations can be export to your individual station list by pressing `x`. This is useful if you're using a JSON link that could have rotating results based on properties.*
 
 Sources support the following fields:
 
