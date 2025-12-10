@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.0](https://github.com/EddieDover/cohors/compare/v0.8.1...v0.9.0) (2025-12-10)
+
+
+### Features
+
+* added ability to delete stations/sources ([#60](https://github.com/EddieDover/cohors/issues/60)) ([9c9e075](https://github.com/EddieDover/cohors/commit/9c9e07593ece845966683eb9a8a0829f110508f7))
+
+
+### Bug Fixes
+
+* changelog generation ([#63](https://github.com/EddieDover/cohors/issues/63)) ([07a34ef](https://github.com/EddieDover/cohors/commit/07a34ef2e68e5f21b57ec05fbdca226261a24c2c))
+
 ## [0.8.1](https://github.com/EddieDover/cohors/compare/v0.8.0...v0.8.1) (2025-12-08)
 
 
