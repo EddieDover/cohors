@@ -24,7 +24,8 @@ I'm happy to hear your feedback and feature requests! I'm also very open to PRs 
 | `j` / `↓` | Move Selection Down |
 | `k` / `↑` | Move Selection Up |
 | `Enter` | Play Selection / Enter Directory |
-| `Backspace` | Go Up Directory |
+| `Backspace` | Go Up Directory or Delete Station/Source |
+| `Delete` | Delete Station/Source |
 | `Space` | Toggle Pause / Resume |
 | `+` / `=` | Volume Up |
 | `-` | Volume Down |
@@ -85,7 +86,7 @@ To edit an existing item, navigate to it in the Radio list and press `e`.
 - **Sources**: Select the source header (the group title) to edit the source configuration.
 
 ### Deleting Items
-To delete an existing item, navigate to it in the Radio list and press 'backspace' or 'delete'.
+To delete an existing item, navigate to it in the Radio list and press `backspace` or `delete`.
 - **Custom Stations**: You can delete any station that you've added manually (under "Custom Stations").
 - **Sources**: Select the source header (the group title) to delete the source configuration.
 
