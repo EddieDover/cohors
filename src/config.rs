@@ -12,16 +12,16 @@ pub struct AppConfig {
     #[serde(default)]
     pub favorites: Favorites,
     #[serde(default)]
-    pub navidrome: Option<NavidromeConfig>,
+    pub subsonic: Option<SubsonicConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
-pub struct NavidromeConfig {
-    pub sources: Vec<NavidromeSourceConfig>,
+pub struct SubsonicConfig {
+    pub sources: Vec<SubsonicSourceConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
-pub struct NavidromeSourceConfig {
+pub struct SubsonicSourceConfig {
     pub server_url: String,
     pub username: String,
     pub password: Option<String>,
@@ -101,15 +101,15 @@ fn get_config_path() -> PathBuf {
     }
 }
 
-pub fn delete_navidrome_from_config(server_url: &str) -> Result<()> {
+pub fn delete_subsonic_from_config(server_url: &str) -> Result<()> {
     let mut config = AppConfig::load()?;
-    if let Some(navidrome) = &mut config.navidrome
-        && let Some(idx) = navidrome
+    if let Some(subsonic) = &mut config.subsonic
+        && let Some(idx) = subsonic
             .sources
             .iter()
             .position(|s| s.server_url == server_url)
     {
-        navidrome.sources.remove(idx);
+        subsonic.sources.remove(idx);
         config.save()?;
     }
     Ok(())

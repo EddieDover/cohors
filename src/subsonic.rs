@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::config::NavidromeSourceConfig;
+use crate::config::SubsonicSourceConfig;
 use anyhow::Result;
 use reqwest::Client;
 use serde::Deserialize;
@@ -8,7 +8,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone)]
 pub struct SubsonicClient {
     client: Client,
-    pub config: NavidromeSourceConfig,
+    pub config: SubsonicSourceConfig,
     client_name: String,
     version: String,
 }
@@ -94,7 +94,7 @@ pub struct Artist {
 }
 
 impl SubsonicClient {
-    pub fn new(config: NavidromeSourceConfig) -> Self {
+    pub fn new(config: SubsonicSourceConfig) -> Self {
         Self {
             client: Client::new(),
             config,
