@@ -744,8 +744,8 @@ impl App {
                         NavidromeView::Tracks(_album_id) => {
                             if let Some(track) = self.navidrome_tracks.get(i) {
                                 let stream_url = client.get_stream_url(&track.id);
-                                let title = if track.artist.is_some() {
-                                    format!("{} - {}", track.artist.as_ref().unwrap(), track.title)
+                                let title = if let Some(artist) = &track.artist {
+                                    format!("{} - {}", artist, track.title)
                                 } else {
                                     track.title.clone()
                                 };

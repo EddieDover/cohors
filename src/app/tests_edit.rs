@@ -403,3 +403,48 @@ fn test_reload_stations_integration() {
         assert!(app.notification.is_some());
     });
 }
+
+#[test]
+fn test_open_edit_modal_navidrome() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_dir = temp.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
+
+    with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
+
+        let app_config = AppConfig {
+            volume: None,
+            navidrome: Some(crate::config::NavidromeConfig {
+                sources: vec![crate::config::NavidromeSourceConfig {
+                    server_url: "http://navi.com".to_string(),
+                    username: "user".to_string(),
+                    password: Some("pass".to_string()),
+                    auth_token: None,
+                }],
+            }),
+            radio: Default::default(),
+            favorites: Default::default(),
+        };
+        app_config.save_to(&config_path).unwrap();
+
+        // Load into app
+        app.navidrome_clients = app_config.navidrome.unwrap().sources.into_iter().map(crate::navidrome::SubsonicClient::new).collect();
+        app.active_navidrome_client = 0;
+        app.mode = AppMode::Navidrome;
+
+        // Open edit modal
+        app.open_edit_modal();
+
+        // Check if modal is open with correct input fields
+        if let Some(AddModalState::InputNavidrome { server_url, username, password, focused_field, original_url }) = &app.add_modal_state {
+            assert_eq!(server_url, "http://navi.com");
+            assert_eq!(username, "user");
+            assert_eq!(password, "pass");
+            assert_eq!(*focused_field, 0);
+            assert_eq!(original_url.as_ref().unwrap(), "http://navi.com");
+        } else {
+            panic!("Expected InputNavidrome state");
+        }
+    });
+}

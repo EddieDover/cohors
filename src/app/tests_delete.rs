@@ -194,3 +194,95 @@ fn test_cancel_delete() {
     // Check if modal closed
     assert!(app.add_modal_state.is_none());
 }
+
+#[test]
+fn test_open_delete_modal_navidrome() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_dir = temp.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
+
+    with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
+
+        // Create a config with one navidrome server
+        let app_config = AppConfig {
+            volume: None,
+            navidrome: Some(crate::config::NavidromeConfig {
+                sources: vec![crate::config::NavidromeSourceConfig {
+                    server_url: "http://navi.com".to_string(),
+                    username: "user".to_string(),
+                    password: Some("pass".to_string()),
+                    auth_token: None,
+                }],
+            }),
+            radio: Default::default(),
+            favorites: Default::default(),
+        };
+        app_config.save_to(&config_path).unwrap();
+
+        // Load into app
+        app.navidrome_clients = app_config.navidrome.unwrap().sources.into_iter().map(crate::navidrome::SubsonicClient::new).collect();
+        app.active_navidrome_client = 0;
+        app.mode = AppMode::Navidrome;
+
+        // Open delete modal
+        app.open_delete_modal();
+
+        // Check if modal is open with correct context
+        if let Some(AddModalState::Confirmation { context, .. }) = &app.add_modal_state {
+            match context {
+                ConfirmationContext::DeleteNavidrome(server_url) => {
+                    assert_eq!(server_url, "http://navi.com");
+                }
+                _ => panic!("Expected DeleteNavidrome context"),
+            }
+        } else {
+            panic!("Expected Confirmation state");
+        }
+    });
+}
+
+#[test]
+fn test_confirm_delete_navidrome() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_dir = temp.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
+
+    with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
+
+        // Create a config with one navidrome server
+        let app_config = AppConfig {
+            volume: None,
+            navidrome: Some(crate::config::NavidromeConfig {
+                sources: vec![crate::config::NavidromeSourceConfig {
+                    server_url: "http://navi.com".to_string(),
+                    username: "user".to_string(),
+                    password: Some("pass".to_string()),
+                    auth_token: None,
+                }],
+            }),
+            radio: Default::default(),
+            favorites: Default::default(),
+        };
+        app_config.save_to(&config_path).unwrap();
+
+        // Setup app state
+        app.add_modal_state = Some(AddModalState::Confirmation {
+            message: "Delete?".to_string(),
+            context: ConfirmationContext::DeleteNavidrome("http://navi.com".to_string()),
+        });
+
+        // Confirm delete
+        app.handle_add_modal_input(KeyCode::Char('y'));
+
+        // Check if modal closed
+        assert!(app.add_modal_state.is_none());
+
+        // Check if deleted from config
+        let content = fs::read_to_string(&config_path).unwrap();
+        let config: AppConfig = serde_json::from_str(&content).unwrap();
+        assert!(config.navidrome.is_some());
+        assert_eq!(config.navidrome.unwrap().sources.len(), 0);
+    });
+}
