@@ -220,7 +220,7 @@ async fn test_get_album() {
     assert_eq!(result[0].id, "1000");
     assert_eq!(result[0].title, "Track 1");
     assert_eq!(result[0].duration, Some(200));
-    assert_eq!(result[0].is_dir, false);
+    assert!(!result[0].is_dir);
     mock.assert_async().await;
 }
 
