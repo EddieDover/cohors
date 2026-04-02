@@ -1,9 +1,9 @@
-use crate::config::NavidromeSourceConfig;
-use crate::navidrome::SubsonicClient;
+use crate::config::SubsonicSourceConfig;
+use crate::subsonic::SubsonicClient;
 use mockito::Server;
 
-fn baseline_config(url: &str) -> NavidromeSourceConfig {
-    NavidromeSourceConfig {
+fn baseline_config(url: &str) -> SubsonicSourceConfig {
+    SubsonicSourceConfig {
         username: "testuser".to_string(),
         password: Some("testpass".to_string()),
         server_url: url.to_string(),
