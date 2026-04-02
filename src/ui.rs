@@ -419,6 +419,106 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             let info_paragraph = Paragraph::new(info_text).block(info_block);
             f.render_widget(info_paragraph, top_chunks[1]);
         }
+        AppMode::Navidrome => {
+            let top_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+                .split(chunks[0]);
+
+            let items: Vec<ListItem> = match app.navidrome_view {
+                crate::app::NavidromeView::Artists => app
+                    .navidrome_artists
+                    .iter()
+                    .map(|artist| ListItem::new(artist.name.clone()))
+                    .collect(),
+                crate::app::NavidromeView::Albums(_) => app
+                    .navidrome_albums
+                    .iter()
+                    .map(|album| {
+                        let mut name = album.name.clone();
+                        if let Some(year) = album.year {
+                            name.push_str(&format!(" ({})", year));
+                        }
+                        ListItem::new(name)
+                    })
+                    .collect(),
+                crate::app::NavidromeView::Tracks(_) => app
+                    .navidrome_tracks
+                    .iter()
+                    .map(|track| ListItem::new(track.title.clone()))
+                    .collect(),
+            };
+
+            let title = if !app.navidrome_clients.is_empty() {
+                format!(
+                    " Navidrome ({}) ",
+                    app.navidrome_clients[app.active_navidrome_client]
+                        .config
+                        .server_url
+                )
+            } else {
+                " Navidrome ".to_string()
+            };
+
+            let nav_list = ratatui::widgets::List::new(items)
+                .block(Block::default().borders(Borders::ALL).title(title))
+                .highlight_style(
+                    Style::default()
+                        .bg(ratatui::style::Color::Yellow)
+                        .fg(ratatui::style::Color::Black)
+                        .add_modifier(ratatui::style::Modifier::BOLD),
+                );
+
+            f.render_stateful_widget(nav_list, top_chunks[0], &mut app.navidrome_state);
+
+            // Render basic metadata info
+            let info_text = if let Some(i) = app.navidrome_state.selected() {
+                match app.navidrome_view {
+                    crate::app::NavidromeView::Artists => {
+                        if let Some(a) = app.navidrome_artists.get(i) {
+                            format!("Artist: {}\nAlbums: {}", a.name, a.album_count.unwrap_or(0))
+                        } else {
+                            String::new()
+                        }
+                    }
+                    crate::app::NavidromeView::Albums(_) => {
+                        if let Some(a) = app.navidrome_albums.get(i) {
+                            let duration = a.duration.unwrap_or(0);
+                            format!(
+                                "Album: {}\nTracks: {}\nDuration: {}:{:02}",
+                                a.name,
+                                a.song_count.unwrap_or(0),
+                                duration / 60,
+                                duration % 60
+                            )
+                        } else {
+                            String::new()
+                        }
+                    }
+                    crate::app::NavidromeView::Tracks(_) => {
+                        if let Some(t) = app.navidrome_tracks.get(i) {
+                            let duration = t.duration.unwrap_or(0);
+                            format!(
+                                "Track: {}\nArtist: {}\nDuration: {}:{:02}\nSize: {} MB",
+                                t.title,
+                                t.artist.as_deref().unwrap_or("Unknown"),
+                                duration / 60,
+                                duration % 60,
+                                t.size.unwrap_or(0) / 1024 / 1024
+                            )
+                        } else {
+                            String::new()
+                        }
+                    }
+                }
+            } else {
+                "No selection".to_string()
+            };
+
+            let info_block = Block::default().borders(Borders::ALL).title("Info");
+            let info_paragraph = Paragraph::new(info_text).block(info_block);
+            f.render_widget(info_paragraph, top_chunks[1]);
+        }
     }
 
     // Help Bar
@@ -472,7 +572,22 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
     if let Some(state) = &app.add_modal_state {
         let area = centered_rect(60, 85, f.area());
         f.render_widget(Clear, area);
-        let block = Block::default().title("Add New").borders(Borders::ALL);
+        let title = match state {
+            AddModalState::InputStation {
+                original_url: Some(_),
+                ..
+            }
+            | AddModalState::InputSource {
+                original_title: Some(_),
+                ..
+            }
+            | AddModalState::InputNavidrome {
+                original_url: Some(_),
+                ..
+            } => "Edit",
+            _ => "Add New",
+        };
+        let block = Block::default().title(title).borders(Borders::ALL);
         f.render_widget(block.clone(), area);
         let inner = block.inner(area);
 
@@ -480,7 +595,14 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
             AddModalState::Selection => {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(3), Constraint::Length(3)].as_ref())
+                    .constraints(
+                        [
+                            Constraint::Length(3),
+                            Constraint::Length(3),
+                            Constraint::Length(3),
+                        ]
+                        .as_ref(),
+                    )
                     .margin(2)
                     .split(inner);
 
@@ -488,9 +610,12 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                     .alignment(ratatui::layout::Alignment::Center);
                 let p2 = Paragraph::new("Press 'r' to add a Radio Source")
                     .alignment(ratatui::layout::Alignment::Center);
+                let p3 = Paragraph::new("Press 'n' to add a Navidrome Server")
+                    .alignment(ratatui::layout::Alignment::Center);
 
                 f.render_widget(p1, chunks[0]);
                 f.render_widget(p2, chunks[1]);
+                f.render_widget(p3, chunks[2]);
             }
             AddModalState::InputStation {
                 name,
@@ -715,6 +840,88 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                     .alignment(ratatui::layout::Alignment::Center)
                     .style(Style::default().fg(Color::Gray));
                 f.render_widget(help, chunks[6]);
+            }
+            AddModalState::InputNavidrome {
+                server_url,
+                username,
+                password,
+                focused_field,
+                original_url,
+            } => {
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints(
+                        [
+                            Constraint::Length(3), // Server URL
+                            Constraint::Length(3), // Username
+                            Constraint::Length(3), // Password
+                            Constraint::Min(0),    // Padding
+                            Constraint::Length(1), // Help text
+                        ]
+                        .as_ref(),
+                    )
+                    .margin(1)
+                    .split(inner);
+
+                // Row 1: Server URL
+                let style = if *focused_field == 0 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                f.render_widget(
+                    Paragraph::new(server_url.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Server URL")
+                            .style(style),
+                    ),
+                    chunks[0],
+                );
+
+                // Row 2: Username
+                let style = if *focused_field == 1 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                f.render_widget(
+                    Paragraph::new(username.as_str()).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Username")
+                            .style(style),
+                    ),
+                    chunks[1],
+                );
+
+                // Row 3: Password
+                let style = if *focused_field == 2 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                let display_pass: String = password.chars().map(|_| '*').collect();
+                f.render_widget(
+                    Paragraph::new(display_pass).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Password")
+                            .style(style),
+                    ),
+                    chunks[2],
+                );
+
+                // Help
+                let help_text = if original_url.is_some() {
+                    "Enter: Save | Esc: Cancel | Tab: Next Field | Del/Backspace: Delete Server"
+                } else {
+                    "Enter: Save | Esc: Cancel | Tab: Next Field"
+                };
+                let help = Paragraph::new(help_text)
+                    .alignment(ratatui::layout::Alignment::Center)
+                    .style(Style::default().fg(Color::Gray));
+                f.render_widget(help, chunks[4]);
             }
             AddModalState::Confirmation {
                 message,

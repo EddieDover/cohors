@@ -3,6 +3,7 @@ mod audio;
 mod config;
 mod favorites;
 mod mpris;
+mod navidrome;
 mod radio;
 #[cfg(test)]
 pub mod test_utils;
@@ -121,6 +122,16 @@ fn main() -> Result<()> {
             }
         }
         app.favorites = config.favorites;
+        if let Some(navidrome) = config.navidrome {
+            app.navidrome_clients = navidrome
+                .sources
+                .into_iter()
+                .map(crate::navidrome::SubsonicClient::new)
+                .collect();
+            if !app.navidrome_clients.is_empty() {
+                app.navidrome_state.select(Some(0));
+            }
+        }
     }
 
     // Setup MPRIS
@@ -163,6 +174,21 @@ fn main() -> Result<()> {
             eprintln!("Failed to load radio stations: {}", e);
         }
     }
+
+    // Fetch Navidrome Library
+    if !app.navidrome_clients.is_empty() {
+        println!("Loading Navidrome library...");
+        match rt.block_on(app.navidrome_clients[0].get_artists()) {
+            Ok(artists) => {
+                println!("Loaded {} Navidrome artists", artists.len());
+                app.navidrome_artists = artists;
+            }
+            Err(e) => {
+                eprintln!("Failed to load Navidrome library: {}", e);
+            }
+        }
+    }
+
     // Delay to allow user to read the message
     std::thread::sleep(std::time::Duration::from_secs(2));
 

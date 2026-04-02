@@ -11,6 +11,21 @@ pub struct AppConfig {
     pub radio: RadioConfig,
     #[serde(default)]
     pub favorites: Favorites,
+    #[serde(default)]
+    pub navidrome: Option<NavidromeConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct NavidromeConfig {
+    pub sources: Vec<NavidromeSourceConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct NavidromeSourceConfig {
+    pub server_url: String,
+    pub username: String,
+    pub password: Option<String>,
+    pub auth_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -84,4 +99,18 @@ fn get_config_path() -> PathBuf {
     } else {
         PathBuf::from("config.json")
     }
+}
+
+pub fn delete_navidrome_from_config(server_url: &str) -> Result<()> {
+    let mut config = AppConfig::load()?;
+    if let Some(navidrome) = &mut config.navidrome
+        && let Some(idx) = navidrome
+            .sources
+            .iter()
+            .position(|s| s.server_url == server_url)
+    {
+        navidrome.sources.remove(idx);
+        config.save()?;
+    }
+    Ok(())
 }

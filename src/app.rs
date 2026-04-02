@@ -32,6 +32,14 @@ pub enum AppMode {
     FileSystem,
     Radio,
     Favorites,
+    Navidrome,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NavidromeView {
+    Artists,
+    Albums(String),
+    Tracks(String),
 }
 
 pub enum LoopMode {
@@ -40,9 +48,11 @@ pub enum LoopMode {
     All,
 }
 
+#[allow(clippy::enum_variant_names)]
 pub enum ConfirmationContext {
     DeleteStation(String),
     DeleteSource(String),
+    DeleteNavidrome(String),
 }
 
 pub enum AddModalState {
@@ -67,6 +77,13 @@ pub enum AddModalState {
         map_tags: String,
         focused_field: usize,
         original_title: Option<String>,
+    },
+    InputNavidrome {
+        server_url: String,
+        username: String,
+        password: String,
+        focused_field: usize,
+        original_url: Option<String>,
     },
     Confirmation {
         message: String,
@@ -122,6 +139,14 @@ pub struct App {
     pub update_receiver: Option<std::sync::mpsc::Receiver<Option<String>>>,
     pub notification: Option<(String, Instant)>,
     pub add_modal_state: Option<AddModalState>,
+    // Navidrome
+    pub navidrome_clients: Vec<crate::navidrome::SubsonicClient>,
+    pub active_navidrome_client: usize,
+    pub navidrome_state: ratatui::widgets::ListState,
+    pub navidrome_artists: Vec<crate::navidrome::Artist>,
+    pub navidrome_albums: Vec<crate::navidrome::Album>,
+    pub navidrome_tracks: Vec<crate::navidrome::Track>,
+    pub navidrome_view: NavidromeView,
 }
 
 impl App {
@@ -186,6 +211,14 @@ impl App {
             update_receiver: None,
             notification: None,
             add_modal_state: None,
+            // Navidrome
+            navidrome_clients: Vec::new(),
+            active_navidrome_client: 0,
+            navidrome_state: ListState::default(),
+            navidrome_artists: Vec::new(),
+            navidrome_albums: Vec::new(),
+            navidrome_tracks: Vec::new(),
+            navidrome_view: NavidromeView::Artists,
         };
         app.check_for_updates();
         app.load_directory();
@@ -242,6 +275,13 @@ impl App {
             update_receiver: None,
             notification: None,
             add_modal_state: None,
+            navidrome_clients: Vec::new(),
+            active_navidrome_client: 0,
+            navidrome_state: ratatui::widgets::ListState::default(),
+            navidrome_artists: Vec::new(),
+            navidrome_albums: Vec::new(),
+            navidrome_tracks: Vec::new(),
+            navidrome_view: NavidromeView::Artists,
         }
     }
     pub fn check_for_updates(&mut self) {
@@ -359,6 +399,7 @@ impl App {
             AppMode::FileSystem => self.state.select(Some(0)),
             AppMode::Radio => self.radio_state.select(Some(0)),
             AppMode::Favorites => self.favorites_state.select(Some(0)),
+            AppMode::Navidrome => self.navidrome_state.select(Some(0)),
         }
     }
 
@@ -370,6 +411,7 @@ impl App {
             AppMode::FileSystem => self.state.select(Some(0)),
             AppMode::Radio => self.radio_state.select(Some(0)),
             AppMode::Favorites => self.favorites_state.select(Some(0)),
+            AppMode::Navidrome => self.navidrome_state.select(Some(0)),
         }
     }
 
@@ -382,6 +424,7 @@ impl App {
             AppMode::FileSystem => self.state.select(Some(0)),
             AppMode::Radio => self.radio_state.select(Some(0)),
             AppMode::Favorites => self.favorites_state.select(Some(0)),
+            AppMode::Navidrome => self.navidrome_state.select(Some(0)),
         }
     }
 
@@ -462,6 +505,24 @@ impl App {
                 };
                 self.favorites_state.select(Some(i));
             }
+            AppMode::Navidrome => {
+                let count = match self.navidrome_view {
+                    NavidromeView::Artists => self.navidrome_artists.len(),
+                    NavidromeView::Albums(_) => self.navidrome_albums.len(),
+                    NavidromeView::Tracks(_) => self.navidrome_tracks.len(),
+                };
+                let i = match self.navidrome_state.selected() {
+                    Some(i) => {
+                        if i >= count.saturating_sub(1) {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.navidrome_state.select(Some(i));
+            }
         }
     }
 
@@ -507,6 +568,24 @@ impl App {
                     None => 0,
                 };
                 self.favorites_state.select(Some(i));
+            }
+            AppMode::Navidrome => {
+                let count = match self.navidrome_view {
+                    NavidromeView::Artists => self.navidrome_artists.len(),
+                    NavidromeView::Albums(_) => self.navidrome_albums.len(),
+                    NavidromeView::Tracks(_) => self.navidrome_tracks.len(),
+                };
+                let i = match self.navidrome_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            count.saturating_sub(1)
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.navidrome_state.select(Some(i));
             }
         }
     }
@@ -617,6 +696,69 @@ impl App {
                         let station_idx = i - self.favorites.files.len();
                         if let Some(station) = self.favorites.stations.get(station_idx) {
                             self.play_radio(station.clone());
+                        }
+                    }
+                }
+            }
+            AppMode::Navidrome => {
+                if let Some(i) = self.navidrome_state.selected() {
+                    if self.navidrome_clients.is_empty() {
+                        return;
+                    }
+                    let client = &self.navidrome_clients[self.active_navidrome_client];
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+
+                    match &self.navidrome_view {
+                        NavidromeView::Artists => {
+                            if let Some(artist) = self.navidrome_artists.get(i) {
+                                match rt.block_on(client.get_artist(&artist.id)) {
+                                    Ok(albums) => {
+                                        self.navidrome_albums = albums;
+                                        self.navidrome_view =
+                                            NavidromeView::Albums(artist.id.clone());
+                                        self.navidrome_state.select(Some(0));
+                                    }
+                                    Err(e) => {
+                                        self.last_error =
+                                            Some(format!("Failed to load albums: {}", e));
+                                    }
+                                }
+                            }
+                        }
+                        NavidromeView::Albums(_artist_id) => {
+                            if let Some(album) = self.navidrome_albums.get(i) {
+                                match rt.block_on(client.get_album(&album.id)) {
+                                    Ok(tracks) => {
+                                        self.navidrome_tracks = tracks;
+                                        self.navidrome_view =
+                                            NavidromeView::Tracks(album.id.clone());
+                                        self.navidrome_state.select(Some(0));
+                                    }
+                                    Err(e) => {
+                                        self.last_error =
+                                            Some(format!("Failed to load tracks: {}", e));
+                                    }
+                                }
+                            }
+                        }
+                        NavidromeView::Tracks(_album_id) => {
+                            if let Some(track) = self.navidrome_tracks.get(i) {
+                                let stream_url = client.get_stream_url(&track.id);
+                                let title = if let Some(artist) = &track.artist {
+                                    format!("{} - {}", artist, track.title)
+                                } else {
+                                    track.title.clone()
+                                };
+                                let station = crate::radio::RadioStation {
+                                    name: title,
+                                    url: stream_url,
+                                    description: track.album.clone(),
+                                    homepage: None,
+                                    tags: None,
+                                    last_playing: None,
+                                };
+                                self.play_radio(station);
+                            }
                         }
                     }
                 }
@@ -1079,6 +1221,15 @@ impl App {
                             original_title: None,
                         };
                     }
+                    KeyCode::Char('n') => {
+                        *state = AddModalState::InputNavidrome {
+                            server_url: String::new(),
+                            username: String::new(),
+                            password: String::new(),
+                            focused_field: 0,
+                            original_url: None,
+                        };
+                    }
                     KeyCode::Esc => self.add_modal_state = None,
                     _ => {}
                 },
@@ -1275,6 +1426,117 @@ impl App {
                     }
                     _ => {}
                 },
+                AddModalState::InputNavidrome {
+                    server_url,
+                    username,
+                    password,
+                    focused_field,
+                    original_url,
+                } => match key {
+                    KeyCode::Esc => self.add_modal_state = None,
+                    KeyCode::Tab | KeyCode::Down => {
+                        *focused_field = (*focused_field + 1) % 3;
+                    }
+                    KeyCode::BackTab | KeyCode::Up => {
+                        *focused_field = if *focused_field > 0 {
+                            *focused_field - 1
+                        } else {
+                            2
+                        };
+                    }
+                    KeyCode::Enter => {
+                        if server_url.is_empty() || username.is_empty() {
+                            self.notification = Some((
+                                "Server URL and Username are required".to_string(),
+                                std::time::Instant::now(),
+                            ));
+                            return;
+                        }
+                        let mut config = crate::config::AppConfig::load().unwrap_or_default();
+                        let nav_source = crate::config::NavidromeSourceConfig {
+                            server_url: server_url.clone(),
+                            username: username.clone(),
+                            password: if password.is_empty() {
+                                None
+                            } else {
+                                Some(password.clone())
+                            },
+                            auth_token: None,
+                        };
+
+                        if let Some(old_url) = original_url {
+                            if let Some(nav_config) = &mut config.navidrome
+                                && let Some(idx) = nav_config
+                                    .sources
+                                    .iter()
+                                    .position(|s| s.server_url == *old_url)
+                            {
+                                nav_config.sources[idx] = nav_source;
+                            }
+                        } else {
+                            if config.navidrome.is_none() {
+                                config.navidrome = Some(crate::config::NavidromeConfig::default());
+                            }
+                            if let Some(nav_config) = &mut config.navidrome {
+                                nav_config.sources.push(nav_source);
+                            }
+                        }
+
+                        if let Err(e) = config.save() {
+                            self.notification =
+                                Some((format!("Error: {}", e), std::time::Instant::now()));
+                        } else {
+                            self.notification = Some((
+                                format!("Saved Navidrome: {}", server_url),
+                                std::time::Instant::now(),
+                            ));
+
+                            self.reload_navidrome();
+                            self.add_modal_state = None;
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        let target = match *focused_field {
+                            0 => server_url,
+                            1 => username,
+                            2 => password,
+                            _ => return,
+                        };
+                        target.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        let target = match *focused_field {
+                            0 => server_url,
+                            1 => username,
+                            2 => password,
+                            _ => return,
+                        };
+                        if target.is_empty() && original_url.is_some() {
+                            let old_url = original_url.as_ref().unwrap();
+                            self.add_modal_state = Some(AddModalState::Confirmation {
+                                message: format!(
+                                    "Are you sure you want to delete Navidrome Server '{}'?",
+                                    old_url
+                                ),
+                                context: ConfirmationContext::DeleteNavidrome(old_url.clone()),
+                            });
+                        } else {
+                            target.pop();
+                        }
+                    }
+                    KeyCode::Delete => {
+                        if let Some(old_url) = original_url {
+                            self.add_modal_state = Some(AddModalState::Confirmation {
+                                message: format!(
+                                    "Are you sure you want to delete Navidrome Server '{}'?",
+                                    old_url
+                                ),
+                                context: ConfirmationContext::DeleteNavidrome(old_url.clone()),
+                            });
+                        }
+                    }
+                    _ => {}
+                },
                 AddModalState::Confirmation {
                     message: _,
                     context,
@@ -1287,6 +1549,9 @@ impl App {
                             }
                             ConfirmationContext::DeleteSource(title) => {
                                 ConfirmationContext::DeleteSource(title.clone())
+                            }
+                            ConfirmationContext::DeleteNavidrome(url) => {
+                                ConfirmationContext::DeleteNavidrome(url.clone())
                             }
                         };
                         self.confirm_delete(&ctx);
@@ -1301,58 +1566,76 @@ impl App {
     }
 
     pub fn open_delete_modal(&mut self) {
-        if self.mode != AppMode::Radio {
-            return;
-        }
+        match self.mode {
+            AppMode::Radio => {
+                let selected_idx = self.radio_state.selected().unwrap_or(0);
+                let mut current_idx = 0;
 
-        let selected_idx = self.radio_state.selected().unwrap_or(0);
-        let mut current_idx = 0;
+                for group in &self.filtered_radio_groups {
+                    // Determine if the group header is selected
+                    if current_idx == selected_idx {
+                        if group.title != "Custom Stations"
+                            && let Ok(config) = crate::radio::load_config()
+                            && let Some(source) =
+                                config.sources.iter().find(|s| s.title == group.title)
+                        {
+                            self.add_modal_state = Some(AddModalState::Confirmation {
+                                message: format!(
+                                    "Are you sure you want to delete source '{}'?",
+                                    source.title
+                                ),
+                                context: ConfirmationContext::DeleteSource(source.title.clone()),
+                            });
+                        }
+                        return;
+                    }
+                    current_idx += 1;
 
-        for group in &self.filtered_radio_groups {
-            // Determine if the group header is selected
-            if current_idx == selected_idx {
-                if group.title != "Custom Stations"
-                    && let Ok(config) = crate::radio::load_config()
-                    && let Some(source) = config.sources.iter().find(|s| s.title == group.title)
-                {
+                    if group.is_expanded {
+                        // Determine if a station within this group is selected
+                        if selected_idx < current_idx + group.stations.len() {
+                            let station_idx = selected_idx - current_idx;
+                            let station = &group.stations[station_idx];
+
+                            // Only allow deleting if it's in the "Custom Stations" group
+                            if group.title == "Custom Stations"
+                                && let Ok(config) = crate::radio::load_config()
+                                && let Some(s) = config
+                                    .individual_stations
+                                    .iter()
+                                    .find(|s| s.station_url == station.url)
+                            {
+                                self.add_modal_state = Some(AddModalState::Confirmation {
+                                    message: format!(
+                                        "Are you sure you want to delete station '{}'?",
+                                        s.name
+                                    ),
+                                    context: ConfirmationContext::DeleteStation(
+                                        s.station_url.clone(),
+                                    ),
+                                });
+                            }
+                            return;
+                        }
+                        current_idx += group.stations.len();
+                    }
+                }
+            }
+            AppMode::Navidrome => {
+                if !self.navidrome_clients.is_empty() {
+                    let client = &self.navidrome_clients[self.active_navidrome_client];
                     self.add_modal_state = Some(AddModalState::Confirmation {
                         message: format!(
-                            "Are you sure you want to delete source '{}'?",
-                            source.title
+                            "Are you sure you want to delete Navidrome Server '{}'?",
+                            client.config.server_url
                         ),
-                        context: ConfirmationContext::DeleteSource(source.title.clone()),
+                        context: ConfirmationContext::DeleteNavidrome(
+                            client.config.server_url.clone(),
+                        ),
                     });
                 }
-                return;
             }
-            current_idx += 1;
-
-            if group.is_expanded {
-                // Determine if a station within this group is selected
-                if selected_idx < current_idx + group.stations.len() {
-                    let station_idx = selected_idx - current_idx;
-                    let station = &group.stations[station_idx];
-
-                    // Only allow deleting if it's in the "Custom Stations" group
-                    if group.title == "Custom Stations"
-                        && let Ok(config) = crate::radio::load_config()
-                        && let Some(s) = config
-                            .individual_stations
-                            .iter()
-                            .find(|s| s.station_url == station.url)
-                    {
-                        self.add_modal_state = Some(AddModalState::Confirmation {
-                            message: format!(
-                                "Are you sure you want to delete station '{}'?",
-                                s.name
-                            ),
-                            context: ConfirmationContext::DeleteStation(s.station_url.clone()),
-                        });
-                    }
-                    return;
-                }
-                current_idx += group.stations.len();
-            }
+            _ => (),
         }
     }
 
@@ -1364,6 +1647,9 @@ impl App {
             ConfirmationContext::DeleteSource(title) => {
                 crate::radio::delete_source_from_config(title)
             }
+            ConfirmationContext::DeleteNavidrome(server_url) => {
+                crate::config::delete_navidrome_from_config(server_url)
+            }
         };
 
         if let Err(e) = result {
@@ -1372,6 +1658,9 @@ impl App {
             self.notification = Some(("Deleted successfully".to_string(), Instant::now()));
             self.add_modal_state = None;
             self.reload_stations();
+            if matches!(context, ConfirmationContext::DeleteNavidrome(_)) {
+                self.reload_navidrome();
+            }
         }
     }
 
@@ -1386,66 +1675,117 @@ impl App {
         });
     }
 
-    pub fn open_edit_modal(&mut self) {
-        if self.mode != AppMode::Radio {
-            return;
+    pub fn reload_navidrome(&mut self) {
+        if let Ok(config) = crate::config::AppConfig::load() {
+            if let Some(navidrome) = config.navidrome {
+                self.navidrome_clients = navidrome
+                    .sources
+                    .into_iter()
+                    .map(crate::navidrome::SubsonicClient::new)
+                    .collect();
+            } else {
+                self.navidrome_clients.clear();
+            }
+
+            if self.navidrome_clients.is_empty() {
+                self.navidrome_artists.clear();
+                self.navidrome_albums.clear();
+                self.navidrome_tracks.clear();
+                self.navidrome_state.select(None);
+            } else {
+                self.navidrome_state.select(Some(0));
+
+                // Fetch the new lib
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                match rt.block_on(self.navidrome_clients[0].get_artists()) {
+                    Ok(artists) => {
+                        self.navidrome_artists = artists;
+                    }
+                    Err(e) => {
+                        self.notification = Some((
+                            format!("Failed to load Navidrome library: {}", e),
+                            Instant::now(),
+                        ));
+                    }
+                }
+            }
         }
+    }
 
-        let selected_idx = self.radio_state.selected().unwrap_or(0);
-        let mut current_idx = 0;
+    pub fn open_edit_modal(&mut self) {
+        match self.mode {
+            AppMode::Radio => {
+                let selected_idx = self.radio_state.selected().unwrap_or(0);
+                let mut current_idx = 0;
 
-        for group in &self.filtered_radio_groups {
-            // Determine if the group header is selected
-            if current_idx == selected_idx {
-                if group.title != "Custom Stations"
-                    && let Ok(config) = crate::radio::load_config()
-                    && let Some(source) = config.sources.iter().find(|s| s.title == group.title)
-                {
-                    self.add_modal_state = Some(AddModalState::InputSource {
-                        title: source.title.clone(),
-                        json_url: source.json_url.clone(),
-                        container: source.container.clone().unwrap_or_default(),
-                        map_name: source.mapping.station_name.clone(),
-                        map_url: source.mapping.station_url.clone(),
-                        map_desc: source.mapping.description.clone().unwrap_or_default(),
-                        map_home: source.mapping.homepage.clone().unwrap_or_default(),
-                        map_tags: source.mapping.tags.clone().unwrap_or_default(),
+                for group in &self.filtered_radio_groups {
+                    // Determine if the group header is selected
+                    if current_idx == selected_idx {
+                        if group.title != "Custom Stations"
+                            && let Ok(config) = crate::radio::load_config()
+                            && let Some(source) =
+                                config.sources.iter().find(|s| s.title == group.title)
+                        {
+                            self.add_modal_state = Some(AddModalState::InputSource {
+                                title: source.title.clone(),
+                                json_url: source.json_url.clone(),
+                                container: source.container.clone().unwrap_or_default(),
+                                map_name: source.mapping.station_name.clone(),
+                                map_url: source.mapping.station_url.clone(),
+                                map_desc: source.mapping.description.clone().unwrap_or_default(),
+                                map_home: source.mapping.homepage.clone().unwrap_or_default(),
+                                map_tags: source.mapping.tags.clone().unwrap_or_default(),
+                                focused_field: 0,
+                                original_title: Some(source.title.clone()),
+                            });
+                        }
+                        return;
+                    }
+                    current_idx += 1;
+
+                    if group.is_expanded {
+                        // Determine if a station within this group is selected
+                        if selected_idx < current_idx + group.stations.len() {
+                            let station_idx = selected_idx - current_idx;
+                            let station = &group.stations[station_idx];
+
+                            // Only allow editing if it's in the "Custom Stations" group
+                            if group.title == "Custom Stations"
+                                && let Ok(config) = crate::radio::load_config()
+                                && let Some(s) = config
+                                    .individual_stations
+                                    .iter()
+                                    .find(|s| s.station_url == station.url)
+                            {
+                                self.add_modal_state = Some(AddModalState::InputStation {
+                                    name: s.name.clone(),
+                                    url: s.station_url.clone(),
+                                    description: s.description.clone().unwrap_or_default(),
+                                    homepage: s.homepage.clone().unwrap_or_default(),
+                                    tags: s.tags.clone().unwrap_or_default(),
+                                    focused_field: 0,
+                                    original_url: Some(s.station_url.clone()),
+                                });
+                            }
+                            return;
+                        }
+                        current_idx += group.stations.len();
+                    }
+                }
+            }
+            AppMode::Navidrome => {
+                if !self.navidrome_clients.is_empty() {
+                    let client = &self.navidrome_clients[self.active_navidrome_client];
+                    self.add_modal_state = Some(AddModalState::InputNavidrome {
+                        server_url: client.config.server_url.clone(),
+                        username: client.config.username.clone(),
+                        password: client.config.password.clone().unwrap_or_default(),
                         focused_field: 0,
-                        original_title: Some(source.title.clone()),
+                        original_url: Some(client.config.server_url.clone()),
                     });
                 }
-                return;
             }
-            current_idx += 1;
-
-            if group.is_expanded {
-                // Determine if a station within this group is selected
-                if selected_idx < current_idx + group.stations.len() {
-                    let station_idx = selected_idx - current_idx;
-                    let station = &group.stations[station_idx];
-
-                    // Only allow editing if it's in the "Custom Stations" group
-                    if group.title == "Custom Stations"
-                        && let Ok(config) = crate::radio::load_config()
-                        && let Some(s) = config
-                            .individual_stations
-                            .iter()
-                            .find(|s| s.station_url == station.url)
-                    {
-                        self.add_modal_state = Some(AddModalState::InputStation {
-                            name: s.name.clone(),
-                            url: s.station_url.clone(),
-                            description: s.description.clone().unwrap_or_default(),
-                            homepage: s.homepage.clone().unwrap_or_default(),
-                            tags: s.tags.clone().unwrap_or_default(),
-                            focused_field: 0,
-                            original_url: Some(s.station_url.clone()),
-                        });
-                    }
-                    return;
-                }
-                current_idx += group.stations.len();
-            }
+            _ => (),
         }
     }
 
@@ -1490,6 +1830,9 @@ impl App {
                         self.favorites_state.select(Some(count - 1));
                     }
                 }
+            }
+            AppMode::Navidrome => {
+                // Not supported yet
             }
         }
     }
@@ -1554,9 +1897,25 @@ impl App {
     }
 
     pub fn go_up(&mut self) {
-        if let Some(parent) = self.current_dir.parent() {
-            self.current_dir = parent.to_path_buf();
-            self.load_directory();
+        match self.mode {
+            AppMode::FileSystem => {
+                if let Some(parent) = self.current_dir.parent() {
+                    self.current_dir = parent.to_path_buf();
+                    self.load_directory();
+                }
+            }
+            AppMode::Navidrome => match self.navidrome_view {
+                NavidromeView::Artists => {}
+                NavidromeView::Albums(_) => {
+                    self.navidrome_view = NavidromeView::Artists;
+                    self.navidrome_state.select(Some(0));
+                }
+                NavidromeView::Tracks(ref artist_id) => {
+                    self.navidrome_view = NavidromeView::Albums(artist_id.clone());
+                    self.navidrome_state.select(Some(0));
+                }
+            },
+            _ => {}
         }
     }
 }
@@ -1681,7 +2040,8 @@ pub fn run_app<B: Backend, E: EventSource>(
                             || match state {
                                 AddModalState::Selection => false,
                                 AddModalState::InputStation { .. }
-                                | AddModalState::InputSource { .. } => {
+                                | AddModalState::InputSource { .. }
+                                | AddModalState::InputNavidrome { .. } => {
                                     matches!(key.code, KeyCode::Char(_) | KeyCode::Backspace)
                                 }
                                 AddModalState::Confirmation { .. } => false,
@@ -1752,7 +2112,14 @@ pub fn run_app<B: Backend, E: EventSource>(
                                 app.mode = match app.mode {
                                     AppMode::FileSystem => AppMode::Radio,
                                     AppMode::Radio => AppMode::Favorites,
-                                    AppMode::Favorites => AppMode::FileSystem,
+                                    AppMode::Favorites => {
+                                        if app.navidrome_clients.is_empty() {
+                                            AppMode::FileSystem
+                                        } else {
+                                            AppMode::Navidrome
+                                        }
+                                    }
+                                    AppMode::Navidrome => AppMode::FileSystem,
                                 };
                                 // Reset search when switching modes.
                                 app.cancel_search();

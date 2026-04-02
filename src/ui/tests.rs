@@ -447,23 +447,145 @@ fn test_ui_draw_add_modal() {
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 
     // 3. Input Source State
-    app.add_modal_state = Some(AddModalState::InputSource {
-        title: "Test Source".to_string(),
-        json_url: "http://json.com".to_string(),
-        container: "data".to_string(),
-        map_name: "n".to_string(),
-        map_url: "u".to_string(),
-        map_desc: "d".to_string(),
-        map_home: "h".to_string(),
-        map_tags: "t".to_string(),
+    for i in 0..8 {
+        app.add_modal_state = Some(AddModalState::InputSource {
+            title: "Test Source".to_string(),
+            json_url: "http://json.com".to_string(),
+            container: "data".to_string(),
+            map_name: "n".to_string(),
+            map_url: "u".to_string(),
+            map_desc: "d".to_string(),
+            map_home: "h".to_string(),
+            map_tags: "t".to_string(),
+            focused_field: i,
+            original_title: None,
+        });
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    // 4. Input Navidrome State
+    for i in 0..3 {
+        app.add_modal_state = Some(AddModalState::InputNavidrome {
+            server_url: "http://nav.com".to_string(),
+            username: "u".to_string(),
+            password: "p".to_string(),
+            focused_field: i,
+            original_url: None,
+        });
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    // 5. Edit Navidrome State
+    app.add_modal_state = Some(AddModalState::InputNavidrome {
+        server_url: "http://nav.com".to_string(),
+        username: "u".to_string(),
+        password: "p".to_string(),
         focused_field: 0,
-        original_title: None,
+        original_url: Some("http://nav.com".to_string()),
     });
     terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
 
-    // Test focus on different fields
-    if let Some(AddModalState::InputSource { focused_field, .. }) = &mut app.add_modal_state {
-        *focused_field = 3;
-    }
+#[test]
+fn test_ui_draw_navidrome_artists() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    app.mode = AppMode::Navidrome;
+    app.navidrome_view = crate::app::NavidromeView::Artists;
+
+    app.navidrome_clients
+        .push(crate::navidrome::SubsonicClient::new(
+            crate::config::NavidromeSourceConfig {
+                server_url: "http://navi.test".to_string(),
+                username: "u".to_string(),
+                password: Some("p".to_string()),
+                auth_token: None,
+            },
+        ));
+    app.active_navidrome_client = 0;
+
+    app.navidrome_artists.push(crate::navidrome::Artist {
+        id: "1".to_string(),
+        name: "Test Artist".to_string(),
+        album_count: Some(5),
+    });
+
+    app.navidrome_state.select(Some(0));
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    app.navidrome_state.select(None);
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
+
+#[test]
+fn test_ui_draw_navidrome_albums() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    app.mode = AppMode::Navidrome;
+    app.navidrome_view = crate::app::NavidromeView::Albums("1".to_string());
+
+    app.navidrome_clients
+        .push(crate::navidrome::SubsonicClient::new(
+            crate::config::NavidromeSourceConfig {
+                server_url: "http://navi.test".to_string(),
+                username: "u".to_string(),
+                password: Some("p".to_string()),
+                auth_token: None,
+            },
+        ));
+
+    app.navidrome_albums.push(crate::navidrome::Album {
+        id: "2".to_string(),
+        name: "Test Album".to_string(),
+        artist: Some("Test Artist".to_string()),
+        artist_id: Some("1".to_string()),
+        song_count: Some(10),
+        duration: Some(1200),
+        year: Some(2025),
+    });
+
+    app.navidrome_state.select(Some(0));
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    app.navidrome_state.select(None);
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
+
+#[test]
+fn test_ui_draw_navidrome_tracks() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    app.mode = AppMode::Navidrome;
+    app.navidrome_view = crate::app::NavidromeView::Tracks("2".to_string());
+
+    app.navidrome_clients
+        .push(crate::navidrome::SubsonicClient::new(
+            crate::config::NavidromeSourceConfig {
+                server_url: "http://navi.test".to_string(),
+                username: "u".to_string(),
+                password: Some("p".to_string()),
+                auth_token: None,
+            },
+        ));
+
+    app.navidrome_tracks.push(crate::navidrome::Track {
+        id: "3".to_string(),
+        parent: Some("2".to_string()),
+        is_dir: false,
+        title: "Test Track".to_string(),
+        album: Some("Test Album".to_string()),
+        artist: Some("Test Artist".to_string()),
+        track: Some(1),
+        duration: Some(180),
+        size: Some(10485760), // 10 MB
+    });
+
+    app.navidrome_state.select(Some(0));
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    app.navidrome_state.select(None);
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 }

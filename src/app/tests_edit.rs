@@ -30,6 +30,7 @@ fn test_open_edit_modal_station() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -109,6 +110,7 @@ fn test_open_edit_modal_second_station() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -195,6 +197,7 @@ fn test_open_edit_modal_source() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -258,6 +261,7 @@ fn test_edit_station_flow() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -318,6 +322,7 @@ fn test_edit_source_flow() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -365,6 +370,7 @@ fn test_reload_stations_integration() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -395,5 +401,87 @@ fn test_reload_stations_integration() {
         assert_eq!(app.radio_groups.len(), 1);
         assert_eq!(app.radio_groups[0].title, "Test");
         assert!(app.notification.is_some());
+    });
+}
+
+#[test]
+fn test_open_edit_modal_navidrome() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_dir = temp.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
+
+    with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
+
+        let app_config = AppConfig {
+            volume: None,
+            navidrome: Some(crate::config::NavidromeConfig {
+                sources: vec![crate::config::NavidromeSourceConfig {
+                    server_url: "http://navi.com".to_string(),
+                    username: "user".to_string(),
+                    password: Some("pass".to_string()),
+                    auth_token: None,
+                }],
+            }),
+            radio: Default::default(),
+            favorites: Default::default(),
+        };
+        app_config.save_to(&config_path).unwrap();
+
+        // Load into app
+        app.navidrome_clients = app_config
+            .navidrome
+            .unwrap()
+            .sources
+            .into_iter()
+            .map(crate::navidrome::SubsonicClient::new)
+            .collect();
+        app.active_navidrome_client = 0;
+        app.mode = AppMode::Navidrome;
+
+        // Open edit modal
+        app.open_edit_modal();
+
+        // Check if modal is open with correct input fields
+        if let Some(AddModalState::InputNavidrome {
+            server_url,
+            username,
+            password,
+            focused_field,
+            original_url,
+        }) = &app.add_modal_state
+        {
+            assert_eq!(server_url, "http://navi.com");
+            assert_eq!(username, "user");
+            assert_eq!(password, "pass");
+            assert_eq!(*focused_field, 0);
+            assert_eq!(original_url.as_ref().unwrap(), "http://navi.com");
+        } else {
+            panic!("Expected InputNavidrome state");
+        }
+
+        // Change url a bit
+        app.handle_add_modal_input(KeyCode::Char('2'));
+
+        // Save
+        app.handle_add_modal_input(KeyCode::Enter);
+
+        // Check if saved and mode reset
+        assert!(app.add_modal_state.is_none());
+        assert!(
+            app.notification
+                .clone()
+                .unwrap()
+                .0
+                .contains("Failed to load")
+                || app.notification.unwrap().0.contains("Saved")
+        );
+
+        // Verify config updated
+        let saved_config = AppConfig::load().unwrap();
+        assert_eq!(
+            saved_config.navidrome.unwrap().sources[0].server_url,
+            "http://navi.com2"
+        );
     });
 }
