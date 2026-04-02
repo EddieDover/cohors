@@ -1451,3 +1451,149 @@ fn test_update_mpris_state() {
     assert_eq!(state.title, "test_song.mp3");
     assert_eq!(state.duration, Some(Duration::from_secs(180)));
 }
+#[test]
+fn test_navidrome_enter_artist_fail() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Navidrome;
+    app.navidrome_view = crate::app::NavidromeView::Artists;
+    
+    app.navidrome_clients.push(crate::navidrome::SubsonicClient::new(
+        crate::config::NavidromeSourceConfig {
+            server_url: "http://127.0.0.1:0".to_string(),
+            username: "u".to_string(),
+            password: Some("p".to_string()),
+            auth_token: None,
+        }
+    ));
+    app.navidrome_artists.push(crate::navidrome::Artist {
+        id: "1".to_string(),
+        name: "Artist".to_string(),
+        album_count: None,
+    });
+    app.navidrome_state.select(Some(0));
+    
+    app.enter_directory();
+    
+    assert!(app.last_error.is_some());
+    assert!(app.last_error.as_ref().unwrap().contains("Failed to load albums"));
+}
+
+#[test]
+fn test_navidrome_enter_album_fail() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Navidrome;
+    app.navidrome_view = crate::app::NavidromeView::Albums("1".to_string());
+    
+    app.navidrome_clients.push(crate::navidrome::SubsonicClient::new(
+        crate::config::NavidromeSourceConfig {
+            server_url: "http://127.0.0.1:0".to_string(),
+            username: "u".to_string(),
+            password: Some("p".to_string()),
+            auth_token: None,
+        }
+    ));
+    app.navidrome_albums.push(crate::navidrome::Album {
+        id: "10".to_string(),
+        name: "Album".to_string(),
+        artist: None,
+        artist_id: None,
+        song_count: None,
+        duration: None,
+        year: None,
+    });
+    app.navidrome_state.select(Some(0));
+    
+    app.enter_directory();
+    
+    assert!(app.last_error.is_some());
+    assert!(app.last_error.as_ref().unwrap().contains("Failed to load tracks"));
+}
+
+#[test]
+fn test_navidrome_enter_track() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Navidrome;
+    app.navidrome_view = crate::app::NavidromeView::Tracks("10".to_string());
+    
+    app.navidrome_clients.push(crate::navidrome::SubsonicClient::new(
+        crate::config::NavidromeSourceConfig {
+            server_url: "http://127.0.0.1:0".to_string(),
+            username: "u".to_string(),
+            password: Some("p".to_string()),
+            auth_token: None,
+        }
+    ));
+    app.navidrome_tracks.push(crate::navidrome::Track {
+        id: "100".to_string(),
+        parent: None,
+        is_dir: false,
+        title: "Track".to_string(),
+        album: Some("Album".to_string()),
+        artist: Some("Artist".to_string()),
+        track: None,
+        duration: None,
+        size: None,
+    });
+    app.navidrome_state.select(Some(0));
+    
+    app.enter_directory();
+    
+    assert_eq!(app.current_track, Some(PathBuf::from("Artist - Track")));
+}
+#[test]
+fn test_navidrome_go_up() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Navidrome;
+    
+    // From Tracks to Albums
+    app.navidrome_view = crate::app::NavidromeView::Tracks("10".to_string());
+    app.go_up();
+    assert!(matches!(app.navidrome_view, crate::app::NavidromeView::Albums(_)));
+    
+    // From Albums to Artists
+    app.navidrome_view = crate::app::NavidromeView::Albums("10".to_string());
+    app.go_up();
+    assert!(matches!(app.navidrome_view, crate::app::NavidromeView::Artists));
+    
+    // From Artists should remain Artists
+    app.navidrome_view = crate::app::NavidromeView::Artists;
+    app.go_up();
+    assert!(matches!(app.navidrome_view, crate::app::NavidromeView::Artists));
+}
+#[test]
+fn test_app_new_coverage() {
+    let _app = App::new();
+}
+#[test]
+fn test_favorites_toggle_file_logic() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Favorites;
+    app.favorites.files.push(PathBuf::from("fav_file.mp3"));
+    app.favorites_state.select(Some(0));
+    
+    app.toggle_favorite();
+    assert!(app.favorites.files.is_empty());
+}
+
+#[test]
+fn test_favorites_toggle_station_logic() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Favorites;
+    app.favorites.files.push(PathBuf::from("fav_file.mp3"));
+    app.favorites.stations.push(crate::radio::RadioStation {
+        name: "S".to_string(),
+        url: "U".to_string(),
+        description: None,
+        homepage: None,
+        tags: None,
+        last_playing: None,
+    });
+    app.favorites_state.select(Some(1));
+    
+    app.toggle_favorite();
+    assert!(app.favorites.stations.is_empty());
+    
+    // Bounds check logic
+    app.favorites_state.select(Some(99)); // index out of bounds
+    app.toggle_favorite(); // shouldn't panic
+}
