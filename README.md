@@ -6,7 +6,7 @@ A TUI music player written in Rust.
 - File system navigation and playback (MP3, WAV, OGG, FLAC)
 - Audio visualization (Spectrum Analyzer)
 - Internet Radio support
-- Subsonic / Navidrome support.
+- Subsonic / Navidrome support
 - Supports MPRIS (media playback controls on a system-wide level)
 - Built-in management for Radio Stations and Sources
 
