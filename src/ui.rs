@@ -572,7 +572,22 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
     if let Some(state) = &app.add_modal_state {
         let area = centered_rect(60, 85, f.area());
         f.render_widget(Clear, area);
-        let block = Block::default().title("Add New").borders(Borders::ALL);
+        let title = match state {
+            AddModalState::InputStation {
+                original_url: Some(_),
+                ..
+            }
+            | AddModalState::InputSource {
+                original_title: Some(_),
+                ..
+            }
+            | AddModalState::InputNavidrome {
+                original_url: Some(_),
+                ..
+            } => "Edit",
+            _ => "Add New",
+        };
+        let block = Block::default().title(title).borders(Borders::ALL);
         f.render_widget(block.clone(), area);
         let inner = block.inner(area);
 
@@ -831,7 +846,7 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                 username,
                 password,
                 focused_field,
-                original_url: _,
+                original_url,
             } => {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
@@ -898,7 +913,12 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                 );
 
                 // Help
-                let help = Paragraph::new("Enter: Save | Esc: Cancel | Tab: Next Field")
+                let help_text = if original_url.is_some() {
+                    "Enter: Save | Esc: Cancel | Tab: Next Field | Del/Backspace: Delete Server"
+                } else {
+                    "Enter: Save | Esc: Cancel | Tab: Next Field"
+                };
+                let help = Paragraph::new(help_text)
                     .alignment(ratatui::layout::Alignment::Center)
                     .style(Style::default().fg(Color::Gray));
                 f.render_widget(help, chunks[4]);

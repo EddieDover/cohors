@@ -1491,14 +1491,7 @@ impl App {
                                 std::time::Instant::now(),
                             ));
 
-                            // Re-initialize clients to reflect new config
-                            self.navidrome_clients = config
-                                .navidrome
-                                .unwrap()
-                                .sources
-                                .into_iter()
-                                .map(crate::navidrome::SubsonicClient::new)
-                                .collect();
+                            self.reload_navidrome();
                             self.add_modal_state = None;
                         }
                     }
@@ -1518,7 +1511,29 @@ impl App {
                             2 => password,
                             _ => return,
                         };
-                        target.pop();
+                        if target.is_empty() && original_url.is_some() {
+                            let old_url = original_url.as_ref().unwrap();
+                            self.add_modal_state = Some(AddModalState::Confirmation {
+                                message: format!(
+                                    "Are you sure you want to delete Navidrome Server '{}'?",
+                                    old_url
+                                ),
+                                context: ConfirmationContext::DeleteNavidrome(old_url.clone()),
+                            });
+                        } else {
+                            target.pop();
+                        }
+                    }
+                    KeyCode::Delete => {
+                        if let Some(old_url) = original_url {
+                            self.add_modal_state = Some(AddModalState::Confirmation {
+                                message: format!(
+                                    "Are you sure you want to delete Navidrome Server '{}'?",
+                                    old_url
+                                ),
+                                context: ConfirmationContext::DeleteNavidrome(old_url.clone()),
+                            });
+                        }
                     }
                     _ => {}
                 },

@@ -474,6 +474,16 @@ fn test_ui_draw_add_modal() {
         });
         terminal.draw(|f| draw(f, &mut app)).unwrap();
     }
+
+    // 5. Edit Navidrome State
+    app.add_modal_state = Some(AddModalState::InputNavidrome {
+        server_url: "http://nav.com".to_string(),
+        username: "u".to_string(),
+        password: "p".to_string(),
+        focused_field: 0,
+        original_url: Some("http://nav.com".to_string()),
+    });
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
 }
 
 #[test]

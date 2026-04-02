@@ -292,3 +292,59 @@ fn test_confirm_delete_navidrome() {
         assert_eq!(config.navidrome.unwrap().sources.len(), 0);
     });
 }
+
+#[test]
+fn test_delete_navidrome_from_edit_modal() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Navidrome;
+    
+    // Set up InputNavidrome state with original_url
+    app.add_modal_state = Some(AddModalState::InputNavidrome {
+        server_url: "http://old.com".to_string(),
+        username: "user".to_string(),
+        password: "password".to_string(),
+        focused_field: 0,
+        original_url: Some("http://old.com".to_string()),
+    });
+
+    // Press Delete
+    app.handle_add_modal_input(KeyCode::Delete);
+
+    if let Some(AddModalState::Confirmation { context, .. }) = &app.add_modal_state {
+        if let ConfirmationContext::DeleteNavidrome(url) = context {
+            assert_eq!(url, "http://old.com");
+        } else {
+            panic!("Expected DeleteNavidrome context");
+        }
+    } else {
+        panic!("Expected Confirmation modal");
+    }
+}
+
+#[test]
+fn test_backspace_empty_deletes_navidrome_from_edit_modal() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Navidrome;
+    
+    // Set up InputNavidrome state with original_url and empty focused field
+    app.add_modal_state = Some(AddModalState::InputNavidrome {
+        server_url: "".to_string(),
+        username: "user".to_string(),
+        password: "password".to_string(),
+        focused_field: 0,
+        original_url: Some("http://old.com".to_string()),
+    });
+
+    // Press Backspace
+    app.handle_add_modal_input(KeyCode::Backspace);
+
+    if let Some(AddModalState::Confirmation { context, .. }) = &app.add_modal_state {
+        if let ConfirmationContext::DeleteNavidrome(url) = context {
+            assert_eq!(url, "http://old.com");
+        } else {
+            panic!("Expected DeleteNavidrome context");
+        }
+    } else {
+        panic!("Expected Confirmation modal");
+    }
+}

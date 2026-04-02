@@ -459,5 +459,29 @@ fn test_open_edit_modal_navidrome() {
         } else {
             panic!("Expected InputNavidrome state");
         }
+
+        // Change url a bit
+        app.handle_add_modal_input(KeyCode::Char('2'));
+
+        // Save
+        app.handle_add_modal_input(KeyCode::Enter);
+
+        // Check if saved and mode reset
+        assert!(app.add_modal_state.is_none());
+        assert!(
+            app.notification
+                .clone()
+                .unwrap()
+                .0
+                .contains("Failed to load")
+                || app.notification.unwrap().0.contains("Saved")
+        );
+
+        // Verify config updated
+        let saved_config = AppConfig::load().unwrap();
+        assert_eq!(
+            saved_config.navidrome.unwrap().sources[0].server_url,
+            "http://navi.com2"
+        );
     });
 }
