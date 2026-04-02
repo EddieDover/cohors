@@ -1314,6 +1314,49 @@ fn test_add_modal_navigation() {
 }
 
 #[test]
+fn test_add_modal_navidrome_flow() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_dir = temp.path().to_path_buf();
+
+    crate::test_utils::with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
+
+        // Open modal
+        app.open_add_modal();
+
+        // Select Navidrome
+        app.handle_add_modal_input(KeyCode::Char('n'));
+        if let Some(AddModalState::InputNavidrome {
+            server_url,
+            focused_field,
+            ..
+        }) = &app.add_modal_state
+        {
+            assert_eq!(server_url, "");
+            assert_eq!(*focused_field, 0);
+        } else {
+            panic!("Expected InputNavidrome state");
+        }
+
+        // Type server URL
+        app.handle_add_modal_input(KeyCode::Char('h'));
+        app.handle_add_modal_input(KeyCode::Char('t'));
+        app.handle_add_modal_input(KeyCode::Char('t'));
+        app.handle_add_modal_input(KeyCode::Char('p'));
+
+        // Move to password field (field 2)
+        app.handle_add_modal_input(KeyCode::Down);
+        app.handle_add_modal_input(KeyCode::Down);
+
+        if let Some(AddModalState::InputNavidrome { focused_field, .. }) = &app.add_modal_state {
+            assert_eq!(*focused_field, 2);
+        } else {
+            panic!("Expected InputNavidrome state after navigation");
+        }
+    });
+}
+
+#[test]
 fn test_add_modal_cancel() {
     let mut app = App::new_test();
     app.open_add_modal();
@@ -1350,6 +1393,23 @@ fn test_add_modal_validation() {
     assert!(matches!(
         app.add_modal_state,
         Some(AddModalState::InputStation { .. })
+    ));
+
+    // 3. Navidrome Validation
+    app.add_modal_state = None;
+    app.notification = None;
+    app.open_add_modal();
+    app.handle_add_modal_input(KeyCode::Char('n'));
+
+    // Try to save empty
+    app.handle_add_modal_input(KeyCode::Enter);
+
+    assert!(app.notification.is_some());
+    assert!(app.notification.as_ref().unwrap().0.contains("required"));
+    // Should still be in modal
+    assert!(matches!(
+        app.add_modal_state,
+        Some(AddModalState::InputNavidrome { .. })
     ));
 
     // 2. Source Validation
