@@ -419,20 +419,25 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             let info_paragraph = Paragraph::new(info_text).block(info_block);
             f.render_widget(info_paragraph, top_chunks[1]);
         }
-        AppMode::Navidrome => {
+        AppMode::Subsonic => {
             let top_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
                 .split(chunks[0]);
 
-            let items: Vec<ListItem> = match app.navidrome_view {
-                crate::app::NavidromeView::Artists => app
-                    .navidrome_artists
+            let items: Vec<ListItem> = match app.subsonic_view {
+                crate::app::SubsonicView::Servers => app
+                    .subsonic_clients
+                    .iter()
+                    .map(|client| ListItem::new(client.config.server_url.clone()))
+                    .collect(),
+                crate::app::SubsonicView::Artists => app
+                    .subsonic_artists
                     .iter()
                     .map(|artist| ListItem::new(artist.name.clone()))
                     .collect(),
-                crate::app::NavidromeView::Albums(_) => app
-                    .navidrome_albums
+                crate::app::SubsonicView::Albums(_) => app
+                    .subsonic_albums
                     .iter()
                     .map(|album| {
                         let mut name = album.name.clone();
@@ -442,22 +447,27 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                         ListItem::new(name)
                     })
                     .collect(),
-                crate::app::NavidromeView::Tracks(_) => app
-                    .navidrome_tracks
+                crate::app::SubsonicView::Tracks(_) => app
+                    .subsonic_tracks
                     .iter()
                     .map(|track| ListItem::new(track.title.clone()))
                     .collect(),
             };
 
-            let title = if !app.navidrome_clients.is_empty() {
-                format!(
-                    " Navidrome ({}) ",
-                    app.navidrome_clients[app.active_navidrome_client]
-                        .config
-                        .server_url
-                )
-            } else {
-                " Navidrome ".to_string()
+            let title = match app.subsonic_view {
+                crate::app::SubsonicView::Servers => " Subsonic Servers ".to_string(),
+                _ => {
+                    if !app.subsonic_clients.is_empty() {
+                        format!(
+                            " Subsonic ({}) ",
+                            app.subsonic_clients[app.active_subsonic_client]
+                                .config
+                                .server_url
+                        )
+                    } else {
+                        " Subsonic ".to_string()
+                    }
+                }
             };
 
             let nav_list = ratatui::widgets::List::new(items)
@@ -469,20 +479,30 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                         .add_modifier(ratatui::style::Modifier::BOLD),
                 );
 
-            f.render_stateful_widget(nav_list, top_chunks[0], &mut app.navidrome_state);
+            f.render_stateful_widget(nav_list, top_chunks[0], &mut app.subsonic_state);
 
             // Render basic metadata info
-            let info_text = if let Some(i) = app.navidrome_state.selected() {
-                match app.navidrome_view {
-                    crate::app::NavidromeView::Artists => {
-                        if let Some(a) = app.navidrome_artists.get(i) {
+            let info_text = if let Some(i) = app.subsonic_state.selected() {
+                match app.subsonic_view {
+                    crate::app::SubsonicView::Servers => {
+                        if let Some(c) = app.subsonic_clients.get(i) {
+                            format!(
+                                "Server: {}\nUsername: {}",
+                                c.config.server_url, c.config.username
+                            )
+                        } else {
+                            String::new()
+                        }
+                    }
+                    crate::app::SubsonicView::Artists => {
+                        if let Some(a) = app.subsonic_artists.get(i) {
                             format!("Artist: {}\nAlbums: {}", a.name, a.album_count.unwrap_or(0))
                         } else {
                             String::new()
                         }
                     }
-                    crate::app::NavidromeView::Albums(_) => {
-                        if let Some(a) = app.navidrome_albums.get(i) {
+                    crate::app::SubsonicView::Albums(_) => {
+                        if let Some(a) = app.subsonic_albums.get(i) {
                             let duration = a.duration.unwrap_or(0);
                             format!(
                                 "Album: {}\nTracks: {}\nDuration: {}:{:02}",
@@ -495,8 +515,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                             String::new()
                         }
                     }
-                    crate::app::NavidromeView::Tracks(_) => {
-                        if let Some(t) = app.navidrome_tracks.get(i) {
+                    crate::app::SubsonicView::Tracks(_) => {
+                        if let Some(t) = app.subsonic_tracks.get(i) {
                             let duration = t.duration.unwrap_or(0);
                             format!(
                                 "Track: {}\nArtist: {}\nDuration: {}:{:02}\nSize: {} MB",
@@ -581,7 +601,7 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                 original_title: Some(_),
                 ..
             }
-            | AddModalState::InputNavidrome {
+            | AddModalState::InputSubsonic {
                 original_url: Some(_),
                 ..
             } => "Edit",
@@ -610,7 +630,7 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                     .alignment(ratatui::layout::Alignment::Center);
                 let p2 = Paragraph::new("Press 'r' to add a Radio Source")
                     .alignment(ratatui::layout::Alignment::Center);
-                let p3 = Paragraph::new("Press 'n' to add a Navidrome Server")
+                let p3 = Paragraph::new("Press 'n' to add a Subsonic Server")
                     .alignment(ratatui::layout::Alignment::Center);
 
                 f.render_widget(p1, chunks[0]);
@@ -841,12 +861,12 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                     .style(Style::default().fg(Color::Gray));
                 f.render_widget(help, chunks[6]);
             }
-            AddModalState::InputNavidrome {
+            AddModalState::InputSubsonic {
                 server_url,
                 username,
                 password,
                 focused_field,
-                original_url,
+                original_url: _,
             } => {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
@@ -913,12 +933,7 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                 );
 
                 // Help
-                let help_text = if original_url.is_some() {
-                    "Enter: Save | Esc: Cancel | Tab: Next Field | Del/Backspace: Delete Server"
-                } else {
-                    "Enter: Save | Esc: Cancel | Tab: Next Field"
-                };
-                let help = Paragraph::new(help_text)
+                let help = Paragraph::new("Enter: Save | Esc: Cancel | Tab: Next Field")
                     .alignment(ratatui::layout::Alignment::Center)
                     .style(Style::default().fg(Color::Gray));
                 f.render_widget(help, chunks[4]);

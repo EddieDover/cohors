@@ -30,7 +30,7 @@ fn test_open_edit_modal_station() {
         };
         let app_config = AppConfig {
             volume: None,
-            navidrome: None,
+            subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -110,7 +110,7 @@ fn test_open_edit_modal_second_station() {
         };
         let app_config = AppConfig {
             volume: None,
-            navidrome: None,
+            subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -197,7 +197,7 @@ fn test_open_edit_modal_source() {
         };
         let app_config = AppConfig {
             volume: None,
-            navidrome: None,
+            subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -261,7 +261,7 @@ fn test_edit_station_flow() {
         };
         let app_config = AppConfig {
             volume: None,
-            navidrome: None,
+            subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -322,7 +322,7 @@ fn test_edit_source_flow() {
         };
         let app_config = AppConfig {
             volume: None,
-            navidrome: None,
+            subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -370,7 +370,7 @@ fn test_reload_stations_integration() {
         };
         let app_config = AppConfig {
             volume: None,
-            navidrome: None,
+            subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -405,7 +405,7 @@ fn test_reload_stations_integration() {
 }
 
 #[test]
-fn test_open_edit_modal_navidrome() {
+fn test_open_edit_modal_subsonic() {
     let temp = tempfile::TempDir::new().unwrap();
     let config_dir = temp.path().to_path_buf();
     let config_path = config_dir.join("cohors/config.json");
@@ -415,8 +415,8 @@ fn test_open_edit_modal_navidrome() {
 
         let app_config = AppConfig {
             volume: None,
-            navidrome: Some(crate::config::NavidromeConfig {
-                sources: vec![crate::config::NavidromeSourceConfig {
+            subsonic: Some(crate::config::SubsonicConfig {
+                sources: vec![crate::config::SubsonicSourceConfig {
                     server_url: "http://navi.com".to_string(),
                     username: "user".to_string(),
                     password: Some("pass".to_string()),
@@ -429,21 +429,22 @@ fn test_open_edit_modal_navidrome() {
         app_config.save_to(&config_path).unwrap();
 
         // Load into app
-        app.navidrome_clients = app_config
-            .navidrome
+        app.subsonic_clients = app_config
+            .subsonic
             .unwrap()
             .sources
             .into_iter()
-            .map(crate::navidrome::SubsonicClient::new)
+            .map(crate::subsonic::SubsonicClient::new)
             .collect();
-        app.active_navidrome_client = 0;
-        app.mode = AppMode::Navidrome;
+        app.subsonic_view = SubsonicView::Servers;
+        app.subsonic_state.select(Some(0));
+        app.mode = AppMode::Subsonic;
 
         // Open edit modal
         app.open_edit_modal();
 
         // Check if modal is open with correct input fields
-        if let Some(AddModalState::InputNavidrome {
+        if let Some(AddModalState::InputSubsonic {
             server_url,
             username,
             password,
@@ -457,7 +458,7 @@ fn test_open_edit_modal_navidrome() {
             assert_eq!(*focused_field, 0);
             assert_eq!(original_url.as_ref().unwrap(), "http://navi.com");
         } else {
-            panic!("Expected InputNavidrome state");
+            panic!("Expected InputSubsonic state");
         }
 
         // Change url a bit
@@ -480,7 +481,7 @@ fn test_open_edit_modal_navidrome() {
         // Verify config updated
         let saved_config = AppConfig::load().unwrap();
         assert_eq!(
-            saved_config.navidrome.unwrap().sources[0].server_url,
+            saved_config.subsonic.unwrap().sources[0].server_url,
             "http://navi.com2"
         );
     });
