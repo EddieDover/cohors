@@ -227,3 +227,7 @@ impl SubsonicClient {
         format!("{}?{}", url, query.join("&"))
     }
 }
+
+#[cfg(test)]
+mod tests;
+
