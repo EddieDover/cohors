@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/EddieDover/cohors/compare/v0.9.0...v0.10.0) (2026-04-02)
+
+
+### Features
+
+* added navidrome/subsonic support ([#64](https://github.com/EddieDover/cohors/issues/64)) ([66512cb](https://github.com/EddieDover/cohors/commit/66512cb74bec1f4b29e8019042f2b18b21b45788))
+
 ## [0.9.0](https://github.com/EddieDover/cohors/compare/v0.8.1...v0.9.0) (2025-12-10)
 
 
