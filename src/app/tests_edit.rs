@@ -30,6 +30,7 @@ fn test_open_edit_modal_station() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -109,6 +110,7 @@ fn test_open_edit_modal_second_station() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -195,6 +197,7 @@ fn test_open_edit_modal_source() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -258,6 +261,7 @@ fn test_edit_station_flow() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -318,6 +322,7 @@ fn test_edit_source_flow() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -365,6 +370,7 @@ fn test_reload_stations_integration() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };

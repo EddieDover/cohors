@@ -30,6 +30,7 @@ fn test_open_delete_modal_station() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -97,6 +98,7 @@ fn test_open_delete_modal_source() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -151,6 +153,7 @@ fn test_confirm_delete_station() {
         };
         let app_config = AppConfig {
             volume: None,
+            navidrome: None,
             radio: radio_config,
             favorites: Default::default(),
         };
