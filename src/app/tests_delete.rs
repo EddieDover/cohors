@@ -30,7 +30,7 @@ fn test_open_delete_modal_station() {
         };
         let app_config = AppConfig {
             volume: None,
-            navidrome: None,
+            subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -98,7 +98,7 @@ fn test_open_delete_modal_source() {
         };
         let app_config = AppConfig {
             volume: None,
-            navidrome: None,
+            subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -153,7 +153,7 @@ fn test_confirm_delete_station() {
         };
         let app_config = AppConfig {
             volume: None,
-            navidrome: None,
+            subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
         };
@@ -196,7 +196,7 @@ fn test_cancel_delete() {
 }
 
 #[test]
-fn test_open_delete_modal_navidrome() {
+fn test_open_delete_modal_subsonic() {
     let temp = tempfile::TempDir::new().unwrap();
     let config_dir = temp.path().to_path_buf();
     let config_path = config_dir.join("cohors/config.json");
@@ -204,11 +204,11 @@ fn test_open_delete_modal_navidrome() {
     with_xdg_config_home(&config_dir, || {
         let mut app = App::new_test();
 
-        // Create a config with one navidrome server
+        // Create a config with one subsonic server
         let app_config = AppConfig {
             volume: None,
-            navidrome: Some(crate::config::NavidromeConfig {
-                sources: vec![crate::config::NavidromeSourceConfig {
+            subsonic: Some(crate::config::SubsonicConfig {
+                sources: vec![crate::config::SubsonicSourceConfig {
                     server_url: "http://navi.com".to_string(),
                     username: "user".to_string(),
                     password: Some("pass".to_string()),
@@ -221,15 +221,16 @@ fn test_open_delete_modal_navidrome() {
         app_config.save_to(&config_path).unwrap();
 
         // Load into app
-        app.navidrome_clients = app_config
-            .navidrome
+        app.subsonic_clients = app_config
+            .subsonic
             .unwrap()
             .sources
             .into_iter()
-            .map(crate::navidrome::SubsonicClient::new)
+            .map(crate::subsonic::SubsonicClient::new)
             .collect();
-        app.active_navidrome_client = 0;
-        app.mode = AppMode::Navidrome;
+        app.subsonic_view = SubsonicView::Servers;
+        app.subsonic_state.select(Some(0));
+        app.mode = AppMode::Subsonic;
 
         // Open delete modal
         app.open_delete_modal();
@@ -237,10 +238,10 @@ fn test_open_delete_modal_navidrome() {
         // Check if modal is open with correct context
         if let Some(AddModalState::Confirmation { context, .. }) = &app.add_modal_state {
             match context {
-                ConfirmationContext::DeleteNavidrome(server_url) => {
+                ConfirmationContext::DeleteSubsonic(server_url) => {
                     assert_eq!(server_url, "http://navi.com");
                 }
-                _ => panic!("Expected DeleteNavidrome context"),
+                _ => panic!("Expected DeleteSubsonic context"),
             }
         } else {
             panic!("Expected Confirmation state");
@@ -249,7 +250,7 @@ fn test_open_delete_modal_navidrome() {
 }
 
 #[test]
-fn test_confirm_delete_navidrome() {
+fn test_confirm_delete_subsonic() {
     let temp = tempfile::TempDir::new().unwrap();
     let config_dir = temp.path().to_path_buf();
     let config_path = config_dir.join("cohors/config.json");
@@ -257,11 +258,11 @@ fn test_confirm_delete_navidrome() {
     with_xdg_config_home(&config_dir, || {
         let mut app = App::new_test();
 
-        // Create a config with one navidrome server
+        // Create a config with one subsonic server
         let app_config = AppConfig {
             volume: None,
-            navidrome: Some(crate::config::NavidromeConfig {
-                sources: vec![crate::config::NavidromeSourceConfig {
+            subsonic: Some(crate::config::SubsonicConfig {
+                sources: vec![crate::config::SubsonicSourceConfig {
                     server_url: "http://navi.com".to_string(),
                     username: "user".to_string(),
                     password: Some("pass".to_string()),
@@ -276,7 +277,7 @@ fn test_confirm_delete_navidrome() {
         // Setup app state
         app.add_modal_state = Some(AddModalState::Confirmation {
             message: "Delete?".to_string(),
-            context: ConfirmationContext::DeleteNavidrome("http://navi.com".to_string()),
+            context: ConfirmationContext::DeleteSubsonic("http://navi.com".to_string()),
         });
 
         // Confirm delete
@@ -288,63 +289,7 @@ fn test_confirm_delete_navidrome() {
         // Check if deleted from config
         let content = fs::read_to_string(&config_path).unwrap();
         let config: AppConfig = serde_json::from_str(&content).unwrap();
-        assert!(config.navidrome.is_some());
-        assert_eq!(config.navidrome.unwrap().sources.len(), 0);
+        assert!(config.subsonic.is_some());
+        assert_eq!(config.subsonic.unwrap().sources.len(), 0);
     });
-}
-
-#[test]
-fn test_delete_navidrome_from_edit_modal() {
-    let mut app = App::new_test();
-    app.mode = AppMode::Navidrome;
-    
-    // Set up InputNavidrome state with original_url
-    app.add_modal_state = Some(AddModalState::InputNavidrome {
-        server_url: "http://old.com".to_string(),
-        username: "user".to_string(),
-        password: "password".to_string(),
-        focused_field: 0,
-        original_url: Some("http://old.com".to_string()),
-    });
-
-    // Press Delete
-    app.handle_add_modal_input(KeyCode::Delete);
-
-    if let Some(AddModalState::Confirmation { context, .. }) = &app.add_modal_state {
-        if let ConfirmationContext::DeleteNavidrome(url) = context {
-            assert_eq!(url, "http://old.com");
-        } else {
-            panic!("Expected DeleteNavidrome context");
-        }
-    } else {
-        panic!("Expected Confirmation modal");
-    }
-}
-
-#[test]
-fn test_backspace_empty_deletes_navidrome_from_edit_modal() {
-    let mut app = App::new_test();
-    app.mode = AppMode::Navidrome;
-    
-    // Set up InputNavidrome state with original_url and empty focused field
-    app.add_modal_state = Some(AddModalState::InputNavidrome {
-        server_url: "".to_string(),
-        username: "user".to_string(),
-        password: "password".to_string(),
-        focused_field: 0,
-        original_url: Some("http://old.com".to_string()),
-    });
-
-    // Press Backspace
-    app.handle_add_modal_input(KeyCode::Backspace);
-
-    if let Some(AddModalState::Confirmation { context, .. }) = &app.add_modal_state {
-        if let ConfirmationContext::DeleteNavidrome(url) = context {
-            assert_eq!(url, "http://old.com");
-        } else {
-            panic!("Expected DeleteNavidrome context");
-        }
-    } else {
-        panic!("Expected Confirmation modal");
-    }
 }

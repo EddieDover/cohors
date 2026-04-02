@@ -463,9 +463,9 @@ fn test_ui_draw_add_modal() {
         terminal.draw(|f| draw(f, &mut app)).unwrap();
     }
 
-    // 4. Input Navidrome State
+    // 4. Input Subsonic State
     for i in 0..3 {
-        app.add_modal_state = Some(AddModalState::InputNavidrome {
+        app.add_modal_state = Some(AddModalState::InputSubsonic {
             server_url: "http://nav.com".to_string(),
             username: "u".to_string(),
             password: "p".to_string(),
@@ -475,8 +475,8 @@ fn test_ui_draw_add_modal() {
         terminal.draw(|f| draw(f, &mut app)).unwrap();
     }
 
-    // 5. Edit Navidrome State
-    app.add_modal_state = Some(AddModalState::InputNavidrome {
+    // 5. Edit Subsonic State
+    app.add_modal_state = Some(AddModalState::InputSubsonic {
         server_url: "http://nav.com".to_string(),
         username: "u".to_string(),
         password: "p".to_string(),
@@ -487,48 +487,48 @@ fn test_ui_draw_add_modal() {
 }
 
 #[test]
-fn test_ui_draw_navidrome_artists() {
+fn test_ui_draw_subsonic_artists() {
     let backend = TestBackend::new(100, 50);
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app = App::new_test();
-    app.mode = AppMode::Navidrome;
-    app.navidrome_view = crate::app::NavidromeView::Artists;
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = crate::app::SubsonicView::Artists;
 
-    app.navidrome_clients
-        .push(crate::navidrome::SubsonicClient::new(
-            crate::config::NavidromeSourceConfig {
+    app.subsonic_clients
+        .push(crate::subsonic::SubsonicClient::new(
+            crate::config::SubsonicSourceConfig {
                 server_url: "http://navi.test".to_string(),
                 username: "u".to_string(),
                 password: Some("p".to_string()),
                 auth_token: None,
             },
         ));
-    app.active_navidrome_client = 0;
+    app.active_subsonic_client = 0;
 
-    app.navidrome_artists.push(crate::navidrome::Artist {
+    app.subsonic_artists.push(crate::subsonic::Artist {
         id: "1".to_string(),
         name: "Test Artist".to_string(),
         album_count: Some(5),
     });
 
-    app.navidrome_state.select(Some(0));
+    app.subsonic_state.select(Some(0));
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 
-    app.navidrome_state.select(None);
+    app.subsonic_state.select(None);
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 }
 
 #[test]
-fn test_ui_draw_navidrome_albums() {
+fn test_ui_draw_subsonic_albums() {
     let backend = TestBackend::new(100, 50);
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app = App::new_test();
-    app.mode = AppMode::Navidrome;
-    app.navidrome_view = crate::app::NavidromeView::Albums("1".to_string());
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = crate::app::SubsonicView::Albums("1".to_string());
 
-    app.navidrome_clients
-        .push(crate::navidrome::SubsonicClient::new(
-            crate::config::NavidromeSourceConfig {
+    app.subsonic_clients
+        .push(crate::subsonic::SubsonicClient::new(
+            crate::config::SubsonicSourceConfig {
                 server_url: "http://navi.test".to_string(),
                 username: "u".to_string(),
                 password: Some("p".to_string()),
@@ -536,7 +536,7 @@ fn test_ui_draw_navidrome_albums() {
             },
         ));
 
-    app.navidrome_albums.push(crate::navidrome::Album {
+    app.subsonic_albums.push(crate::subsonic::Album {
         id: "2".to_string(),
         name: "Test Album".to_string(),
         artist: Some("Test Artist".to_string()),
@@ -546,24 +546,24 @@ fn test_ui_draw_navidrome_albums() {
         year: Some(2025),
     });
 
-    app.navidrome_state.select(Some(0));
+    app.subsonic_state.select(Some(0));
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 
-    app.navidrome_state.select(None);
+    app.subsonic_state.select(None);
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 }
 
 #[test]
-fn test_ui_draw_navidrome_tracks() {
+fn test_ui_draw_subsonic_tracks() {
     let backend = TestBackend::new(100, 50);
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app = App::new_test();
-    app.mode = AppMode::Navidrome;
-    app.navidrome_view = crate::app::NavidromeView::Tracks("2".to_string());
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = crate::app::SubsonicView::Tracks("2".to_string());
 
-    app.navidrome_clients
-        .push(crate::navidrome::SubsonicClient::new(
-            crate::config::NavidromeSourceConfig {
+    app.subsonic_clients
+        .push(crate::subsonic::SubsonicClient::new(
+            crate::config::SubsonicSourceConfig {
                 server_url: "http://navi.test".to_string(),
                 username: "u".to_string(),
                 password: Some("p".to_string()),
@@ -571,7 +571,7 @@ fn test_ui_draw_navidrome_tracks() {
             },
         ));
 
-    app.navidrome_tracks.push(crate::navidrome::Track {
+    app.subsonic_tracks.push(crate::subsonic::Track {
         id: "3".to_string(),
         parent: Some("2".to_string()),
         is_dir: false,
@@ -583,9 +583,9 @@ fn test_ui_draw_navidrome_tracks() {
         size: Some(10485760), // 10 MB
     });
 
-    app.navidrome_state.select(Some(0));
+    app.subsonic_state.select(Some(0));
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 
-    app.navidrome_state.select(None);
+    app.subsonic_state.select(None);
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 }

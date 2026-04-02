@@ -3,8 +3,8 @@ mod audio;
 mod config;
 mod favorites;
 mod mpris;
-mod navidrome;
 mod radio;
+mod subsonic;
 #[cfg(test)]
 pub mod test_utils;
 mod ui;
@@ -122,14 +122,14 @@ fn main() -> Result<()> {
             }
         }
         app.favorites = config.favorites;
-        if let Some(navidrome) = config.navidrome {
-            app.navidrome_clients = navidrome
+        if let Some(subsonic) = config.subsonic {
+            app.subsonic_clients = subsonic
                 .sources
                 .into_iter()
-                .map(crate::navidrome::SubsonicClient::new)
+                .map(crate::subsonic::SubsonicClient::new)
                 .collect();
-            if !app.navidrome_clients.is_empty() {
-                app.navidrome_state.select(Some(0));
+            if !app.subsonic_clients.is_empty() {
+                app.subsonic_state.select(Some(0));
             }
         }
     }
@@ -175,16 +175,16 @@ fn main() -> Result<()> {
         }
     }
 
-    // Fetch Navidrome Library
-    if !app.navidrome_clients.is_empty() {
-        println!("Loading Navidrome library...");
-        match rt.block_on(app.navidrome_clients[0].get_artists()) {
+    // Fetch Subsonic Library
+    if !app.subsonic_clients.is_empty() {
+        println!("Loading Subsonic library...");
+        match rt.block_on(app.subsonic_clients[0].get_artists()) {
             Ok(artists) => {
-                println!("Loaded {} Navidrome artists", artists.len());
-                app.navidrome_artists = artists;
+                println!("Loaded {} Subsonic artists", artists.len());
+                app.subsonic_artists = artists;
             }
             Err(e) => {
-                eprintln!("Failed to load Navidrome library: {}", e);
+                eprintln!("Failed to load Subsonic library: {}", e);
             }
         }
     }

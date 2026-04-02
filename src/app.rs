@@ -32,11 +32,12 @@ pub enum AppMode {
     FileSystem,
     Radio,
     Favorites,
-    Navidrome,
+    Subsonic,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum NavidromeView {
+pub enum SubsonicView {
+    Servers,
     Artists,
     Albums(String),
     Tracks(String),
@@ -52,7 +53,7 @@ pub enum LoopMode {
 pub enum ConfirmationContext {
     DeleteStation(String),
     DeleteSource(String),
-    DeleteNavidrome(String),
+    DeleteSubsonic(String),
 }
 
 pub enum AddModalState {
@@ -78,7 +79,7 @@ pub enum AddModalState {
         focused_field: usize,
         original_title: Option<String>,
     },
-    InputNavidrome {
+    InputSubsonic {
         server_url: String,
         username: String,
         password: String,
@@ -139,14 +140,14 @@ pub struct App {
     pub update_receiver: Option<std::sync::mpsc::Receiver<Option<String>>>,
     pub notification: Option<(String, Instant)>,
     pub add_modal_state: Option<AddModalState>,
-    // Navidrome
-    pub navidrome_clients: Vec<crate::navidrome::SubsonicClient>,
-    pub active_navidrome_client: usize,
-    pub navidrome_state: ratatui::widgets::ListState,
-    pub navidrome_artists: Vec<crate::navidrome::Artist>,
-    pub navidrome_albums: Vec<crate::navidrome::Album>,
-    pub navidrome_tracks: Vec<crate::navidrome::Track>,
-    pub navidrome_view: NavidromeView,
+    // Subsonic
+    pub subsonic_clients: Vec<crate::subsonic::SubsonicClient>,
+    pub active_subsonic_client: usize,
+    pub subsonic_state: ratatui::widgets::ListState,
+    pub subsonic_artists: Vec<crate::subsonic::Artist>,
+    pub subsonic_albums: Vec<crate::subsonic::Album>,
+    pub subsonic_tracks: Vec<crate::subsonic::Track>,
+    pub subsonic_view: SubsonicView,
 }
 
 impl App {
@@ -211,14 +212,14 @@ impl App {
             update_receiver: None,
             notification: None,
             add_modal_state: None,
-            // Navidrome
-            navidrome_clients: Vec::new(),
-            active_navidrome_client: 0,
-            navidrome_state: ListState::default(),
-            navidrome_artists: Vec::new(),
-            navidrome_albums: Vec::new(),
-            navidrome_tracks: Vec::new(),
-            navidrome_view: NavidromeView::Artists,
+            // Subsonic
+            subsonic_clients: Vec::new(),
+            active_subsonic_client: 0,
+            subsonic_state: ListState::default(),
+            subsonic_artists: Vec::new(),
+            subsonic_albums: Vec::new(),
+            subsonic_tracks: Vec::new(),
+            subsonic_view: SubsonicView::Servers,
         };
         app.check_for_updates();
         app.load_directory();
@@ -275,13 +276,13 @@ impl App {
             update_receiver: None,
             notification: None,
             add_modal_state: None,
-            navidrome_clients: Vec::new(),
-            active_navidrome_client: 0,
-            navidrome_state: ratatui::widgets::ListState::default(),
-            navidrome_artists: Vec::new(),
-            navidrome_albums: Vec::new(),
-            navidrome_tracks: Vec::new(),
-            navidrome_view: NavidromeView::Artists,
+            subsonic_clients: Vec::new(),
+            active_subsonic_client: 0,
+            subsonic_state: ratatui::widgets::ListState::default(),
+            subsonic_artists: Vec::new(),
+            subsonic_albums: Vec::new(),
+            subsonic_tracks: Vec::new(),
+            subsonic_view: SubsonicView::Servers,
         }
     }
     pub fn check_for_updates(&mut self) {
@@ -399,7 +400,7 @@ impl App {
             AppMode::FileSystem => self.state.select(Some(0)),
             AppMode::Radio => self.radio_state.select(Some(0)),
             AppMode::Favorites => self.favorites_state.select(Some(0)),
-            AppMode::Navidrome => self.navidrome_state.select(Some(0)),
+            AppMode::Subsonic => self.subsonic_state.select(Some(0)),
         }
     }
 
@@ -411,7 +412,7 @@ impl App {
             AppMode::FileSystem => self.state.select(Some(0)),
             AppMode::Radio => self.radio_state.select(Some(0)),
             AppMode::Favorites => self.favorites_state.select(Some(0)),
-            AppMode::Navidrome => self.navidrome_state.select(Some(0)),
+            AppMode::Subsonic => self.subsonic_state.select(Some(0)),
         }
     }
 
@@ -424,7 +425,7 @@ impl App {
             AppMode::FileSystem => self.state.select(Some(0)),
             AppMode::Radio => self.radio_state.select(Some(0)),
             AppMode::Favorites => self.favorites_state.select(Some(0)),
-            AppMode::Navidrome => self.navidrome_state.select(Some(0)),
+            AppMode::Subsonic => self.subsonic_state.select(Some(0)),
         }
     }
 
@@ -505,13 +506,14 @@ impl App {
                 };
                 self.favorites_state.select(Some(i));
             }
-            AppMode::Navidrome => {
-                let count = match self.navidrome_view {
-                    NavidromeView::Artists => self.navidrome_artists.len(),
-                    NavidromeView::Albums(_) => self.navidrome_albums.len(),
-                    NavidromeView::Tracks(_) => self.navidrome_tracks.len(),
+            AppMode::Subsonic => {
+                let count = match self.subsonic_view {
+                    SubsonicView::Servers => self.subsonic_clients.len(),
+                    SubsonicView::Artists => self.subsonic_artists.len(),
+                    SubsonicView::Albums(_) => self.subsonic_albums.len(),
+                    SubsonicView::Tracks(_) => self.subsonic_tracks.len(),
                 };
-                let i = match self.navidrome_state.selected() {
+                let i = match self.subsonic_state.selected() {
                     Some(i) => {
                         if i >= count.saturating_sub(1) {
                             0
@@ -521,7 +523,7 @@ impl App {
                     }
                     None => 0,
                 };
-                self.navidrome_state.select(Some(i));
+                self.subsonic_state.select(Some(i));
             }
         }
     }
@@ -569,13 +571,14 @@ impl App {
                 };
                 self.favorites_state.select(Some(i));
             }
-            AppMode::Navidrome => {
-                let count = match self.navidrome_view {
-                    NavidromeView::Artists => self.navidrome_artists.len(),
-                    NavidromeView::Albums(_) => self.navidrome_albums.len(),
-                    NavidromeView::Tracks(_) => self.navidrome_tracks.len(),
+            AppMode::Subsonic => {
+                let count = match self.subsonic_view {
+                    SubsonicView::Servers => self.subsonic_clients.len(),
+                    SubsonicView::Artists => self.subsonic_artists.len(),
+                    SubsonicView::Albums(_) => self.subsonic_albums.len(),
+                    SubsonicView::Tracks(_) => self.subsonic_tracks.len(),
                 };
-                let i = match self.navidrome_state.selected() {
+                let i = match self.subsonic_state.selected() {
                     Some(i) => {
                         if i == 0 {
                             count.saturating_sub(1)
@@ -585,7 +588,7 @@ impl App {
                     }
                     None => 0,
                 };
-                self.navidrome_state.select(Some(i));
+                self.subsonic_state.select(Some(i));
             }
         }
     }
@@ -700,23 +703,45 @@ impl App {
                     }
                 }
             }
-            AppMode::Navidrome => {
-                if let Some(i) = self.navidrome_state.selected() {
-                    if self.navidrome_clients.is_empty() {
+            AppMode::Subsonic => {
+                if let Some(i) = self.subsonic_state.selected() {
+                    if self.subsonic_clients.is_empty() {
                         return;
                     }
-                    let client = &self.navidrome_clients[self.active_navidrome_client];
+
+                    if let SubsonicView::Servers = self.subsonic_view {
+                        self.active_subsonic_client = i;
+                        let client = &self.subsonic_clients[i];
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        match rt.block_on(client.get_artists()) {
+                            Ok(artists) => {
+                                self.subsonic_artists = artists;
+                                self.subsonic_view = SubsonicView::Artists;
+                                self.subsonic_state.select(Some(0));
+                            }
+                            Err(e) => {
+                                self.notification = Some((
+                                    format!("Failed to load artists: {}", e),
+                                    std::time::Instant::now(),
+                                ));
+                            }
+                        }
+                        return;
+                    }
+
+                    let client = &self.subsonic_clients[self.active_subsonic_client];
                     let rt = tokio::runtime::Runtime::new().unwrap();
 
-                    match &self.navidrome_view {
-                        NavidromeView::Artists => {
-                            if let Some(artist) = self.navidrome_artists.get(i) {
+                    match &self.subsonic_view {
+                        SubsonicView::Servers => unreachable!(),
+                        SubsonicView::Artists => {
+                            if let Some(artist) = self.subsonic_artists.get(i) {
                                 match rt.block_on(client.get_artist(&artist.id)) {
                                     Ok(albums) => {
-                                        self.navidrome_albums = albums;
-                                        self.navidrome_view =
-                                            NavidromeView::Albums(artist.id.clone());
-                                        self.navidrome_state.select(Some(0));
+                                        self.subsonic_albums = albums;
+                                        self.subsonic_view =
+                                            SubsonicView::Albums(artist.id.clone());
+                                        self.subsonic_state.select(Some(0));
                                     }
                                     Err(e) => {
                                         self.last_error =
@@ -725,14 +750,13 @@ impl App {
                                 }
                             }
                         }
-                        NavidromeView::Albums(_artist_id) => {
-                            if let Some(album) = self.navidrome_albums.get(i) {
+                        SubsonicView::Albums(_artist_id) => {
+                            if let Some(album) = self.subsonic_albums.get(i) {
                                 match rt.block_on(client.get_album(&album.id)) {
                                     Ok(tracks) => {
-                                        self.navidrome_tracks = tracks;
-                                        self.navidrome_view =
-                                            NavidromeView::Tracks(album.id.clone());
-                                        self.navidrome_state.select(Some(0));
+                                        self.subsonic_tracks = tracks;
+                                        self.subsonic_view = SubsonicView::Tracks(album.id.clone());
+                                        self.subsonic_state.select(Some(0));
                                     }
                                     Err(e) => {
                                         self.last_error =
@@ -741,8 +765,8 @@ impl App {
                                 }
                             }
                         }
-                        NavidromeView::Tracks(_album_id) => {
-                            if let Some(track) = self.navidrome_tracks.get(i) {
+                        SubsonicView::Tracks(_album_id) => {
+                            if let Some(track) = self.subsonic_tracks.get(i) {
                                 let stream_url = client.get_stream_url(&track.id);
                                 let title = if let Some(artist) = &track.artist {
                                     format!("{} - {}", artist, track.title)
@@ -1222,7 +1246,7 @@ impl App {
                         };
                     }
                     KeyCode::Char('n') => {
-                        *state = AddModalState::InputNavidrome {
+                        *state = AddModalState::InputSubsonic {
                             server_url: String::new(),
                             username: String::new(),
                             password: String::new(),
@@ -1426,7 +1450,7 @@ impl App {
                     }
                     _ => {}
                 },
-                AddModalState::InputNavidrome {
+                AddModalState::InputSubsonic {
                     server_url,
                     username,
                     password,
@@ -1453,7 +1477,7 @@ impl App {
                             return;
                         }
                         let mut config = crate::config::AppConfig::load().unwrap_or_default();
-                        let nav_source = crate::config::NavidromeSourceConfig {
+                        let nav_source = crate::config::SubsonicSourceConfig {
                             server_url: server_url.clone(),
                             username: username.clone(),
                             password: if password.is_empty() {
@@ -1465,7 +1489,7 @@ impl App {
                         };
 
                         if let Some(old_url) = original_url {
-                            if let Some(nav_config) = &mut config.navidrome
+                            if let Some(nav_config) = &mut config.subsonic
                                 && let Some(idx) = nav_config
                                     .sources
                                     .iter()
@@ -1474,10 +1498,10 @@ impl App {
                                 nav_config.sources[idx] = nav_source;
                             }
                         } else {
-                            if config.navidrome.is_none() {
-                                config.navidrome = Some(crate::config::NavidromeConfig::default());
+                            if config.subsonic.is_none() {
+                                config.subsonic = Some(crate::config::SubsonicConfig::default());
                             }
-                            if let Some(nav_config) = &mut config.navidrome {
+                            if let Some(nav_config) = &mut config.subsonic {
                                 nav_config.sources.push(nav_source);
                             }
                         }
@@ -1487,11 +1511,11 @@ impl App {
                                 Some((format!("Error: {}", e), std::time::Instant::now()));
                         } else {
                             self.notification = Some((
-                                format!("Saved Navidrome: {}", server_url),
+                                format!("Saved Subsonic: {}", server_url),
                                 std::time::Instant::now(),
                             ));
 
-                            self.reload_navidrome();
+                            self.reload_subsonic();
                             self.add_modal_state = None;
                         }
                     }
@@ -1511,29 +1535,7 @@ impl App {
                             2 => password,
                             _ => return,
                         };
-                        if target.is_empty() && original_url.is_some() {
-                            let old_url = original_url.as_ref().unwrap();
-                            self.add_modal_state = Some(AddModalState::Confirmation {
-                                message: format!(
-                                    "Are you sure you want to delete Navidrome Server '{}'?",
-                                    old_url
-                                ),
-                                context: ConfirmationContext::DeleteNavidrome(old_url.clone()),
-                            });
-                        } else {
-                            target.pop();
-                        }
-                    }
-                    KeyCode::Delete => {
-                        if let Some(old_url) = original_url {
-                            self.add_modal_state = Some(AddModalState::Confirmation {
-                                message: format!(
-                                    "Are you sure you want to delete Navidrome Server '{}'?",
-                                    old_url
-                                ),
-                                context: ConfirmationContext::DeleteNavidrome(old_url.clone()),
-                            });
-                        }
+                        target.pop();
                     }
                     _ => {}
                 },
@@ -1550,8 +1552,8 @@ impl App {
                             ConfirmationContext::DeleteSource(title) => {
                                 ConfirmationContext::DeleteSource(title.clone())
                             }
-                            ConfirmationContext::DeleteNavidrome(url) => {
-                                ConfirmationContext::DeleteNavidrome(url.clone())
+                            ConfirmationContext::DeleteSubsonic(url) => {
+                                ConfirmationContext::DeleteSubsonic(url.clone())
                             }
                         };
                         self.confirm_delete(&ctx);
@@ -1621,15 +1623,18 @@ impl App {
                     }
                 }
             }
-            AppMode::Navidrome => {
-                if !self.navidrome_clients.is_empty() {
-                    let client = &self.navidrome_clients[self.active_navidrome_client];
+            AppMode::Subsonic => {
+                if let SubsonicView::Servers = self.subsonic_view
+                    && let Some(i) = self.subsonic_state.selected()
+                    && i < self.subsonic_clients.len()
+                {
+                    let client = &self.subsonic_clients[i];
                     self.add_modal_state = Some(AddModalState::Confirmation {
                         message: format!(
-                            "Are you sure you want to delete Navidrome Server '{}'?",
+                            "Are you sure you want to delete Subsonic Server '{}'?",
                             client.config.server_url
                         ),
-                        context: ConfirmationContext::DeleteNavidrome(
+                        context: ConfirmationContext::DeleteSubsonic(
                             client.config.server_url.clone(),
                         ),
                     });
@@ -1647,8 +1652,8 @@ impl App {
             ConfirmationContext::DeleteSource(title) => {
                 crate::radio::delete_source_from_config(title)
             }
-            ConfirmationContext::DeleteNavidrome(server_url) => {
-                crate::config::delete_navidrome_from_config(server_url)
+            ConfirmationContext::DeleteSubsonic(server_url) => {
+                crate::config::delete_subsonic_from_config(server_url)
             }
         };
 
@@ -1658,8 +1663,8 @@ impl App {
             self.notification = Some(("Deleted successfully".to_string(), Instant::now()));
             self.add_modal_state = None;
             self.reload_stations();
-            if matches!(context, ConfirmationContext::DeleteNavidrome(_)) {
-                self.reload_navidrome();
+            if matches!(context, ConfirmationContext::DeleteSubsonic(_)) {
+                self.reload_subsonic();
             }
         }
     }
@@ -1675,35 +1680,35 @@ impl App {
         });
     }
 
-    pub fn reload_navidrome(&mut self) {
+    pub fn reload_subsonic(&mut self) {
         if let Ok(config) = crate::config::AppConfig::load() {
-            if let Some(navidrome) = config.navidrome {
-                self.navidrome_clients = navidrome
+            if let Some(subsonic) = config.subsonic {
+                self.subsonic_clients = subsonic
                     .sources
                     .into_iter()
-                    .map(crate::navidrome::SubsonicClient::new)
+                    .map(crate::subsonic::SubsonicClient::new)
                     .collect();
             } else {
-                self.navidrome_clients.clear();
+                self.subsonic_clients.clear();
             }
 
-            if self.navidrome_clients.is_empty() {
-                self.navidrome_artists.clear();
-                self.navidrome_albums.clear();
-                self.navidrome_tracks.clear();
-                self.navidrome_state.select(None);
+            if self.subsonic_clients.is_empty() {
+                self.subsonic_artists.clear();
+                self.subsonic_albums.clear();
+                self.subsonic_tracks.clear();
+                self.subsonic_state.select(None);
             } else {
-                self.navidrome_state.select(Some(0));
+                self.subsonic_state.select(Some(0));
 
                 // Fetch the new lib
                 let rt = tokio::runtime::Runtime::new().unwrap();
-                match rt.block_on(self.navidrome_clients[0].get_artists()) {
+                match rt.block_on(self.subsonic_clients[0].get_artists()) {
                     Ok(artists) => {
-                        self.navidrome_artists = artists;
+                        self.subsonic_artists = artists;
                     }
                     Err(e) => {
                         self.notification = Some((
-                            format!("Failed to load Navidrome library: {}", e),
+                            format!("Failed to load Subsonic library: {}", e),
                             Instant::now(),
                         ));
                     }
@@ -1773,10 +1778,13 @@ impl App {
                     }
                 }
             }
-            AppMode::Navidrome => {
-                if !self.navidrome_clients.is_empty() {
-                    let client = &self.navidrome_clients[self.active_navidrome_client];
-                    self.add_modal_state = Some(AddModalState::InputNavidrome {
+            AppMode::Subsonic => {
+                if let SubsonicView::Servers = self.subsonic_view
+                    && let Some(i) = self.subsonic_state.selected()
+                    && i < self.subsonic_clients.len()
+                {
+                    let client = &self.subsonic_clients[i];
+                    self.add_modal_state = Some(AddModalState::InputSubsonic {
                         server_url: client.config.server_url.clone(),
                         username: client.config.username.clone(),
                         password: client.config.password.clone().unwrap_or_default(),
@@ -1831,7 +1839,7 @@ impl App {
                     }
                 }
             }
-            AppMode::Navidrome => {
+            AppMode::Subsonic => {
                 // Not supported yet
             }
         }
@@ -1904,15 +1912,20 @@ impl App {
                     self.load_directory();
                 }
             }
-            AppMode::Navidrome => match self.navidrome_view {
-                NavidromeView::Artists => {}
-                NavidromeView::Albums(_) => {
-                    self.navidrome_view = NavidromeView::Artists;
-                    self.navidrome_state.select(Some(0));
+            AppMode::Subsonic => match self.subsonic_view {
+                SubsonicView::Servers => {}
+                SubsonicView::Artists => {
+                    self.subsonic_view = SubsonicView::Servers;
+                    self.subsonic_state
+                        .select(Some(self.active_subsonic_client));
                 }
-                NavidromeView::Tracks(ref artist_id) => {
-                    self.navidrome_view = NavidromeView::Albums(artist_id.clone());
-                    self.navidrome_state.select(Some(0));
+                SubsonicView::Albums(_) => {
+                    self.subsonic_view = SubsonicView::Artists;
+                    self.subsonic_state.select(Some(0));
+                }
+                SubsonicView::Tracks(ref artist_id) => {
+                    self.subsonic_view = SubsonicView::Albums(artist_id.clone());
+                    self.subsonic_state.select(Some(0));
                 }
             },
             _ => {}
@@ -2041,7 +2054,7 @@ pub fn run_app<B: Backend, E: EventSource>(
                                 AddModalState::Selection => false,
                                 AddModalState::InputStation { .. }
                                 | AddModalState::InputSource { .. }
-                                | AddModalState::InputNavidrome { .. } => {
+                                | AddModalState::InputSubsonic { .. } => {
                                     matches!(key.code, KeyCode::Char(_) | KeyCode::Backspace)
                                 }
                                 AddModalState::Confirmation { .. } => false,
@@ -2113,13 +2126,13 @@ pub fn run_app<B: Backend, E: EventSource>(
                                     AppMode::FileSystem => AppMode::Radio,
                                     AppMode::Radio => AppMode::Favorites,
                                     AppMode::Favorites => {
-                                        if app.navidrome_clients.is_empty() {
+                                        if app.subsonic_clients.is_empty() {
                                             AppMode::FileSystem
                                         } else {
-                                            AppMode::Navidrome
+                                            AppMode::Subsonic
                                         }
                                     }
-                                    AppMode::Navidrome => AppMode::FileSystem,
+                                    AppMode::Subsonic => AppMode::FileSystem,
                                 };
                                 // Reset search when switching modes.
                                 app.cancel_search();
@@ -2167,7 +2180,10 @@ pub fn run_app<B: Backend, E: EventSource>(
                             }
                         }
                         KeyCode::Backspace | KeyCode::Delete => {
-                            if app.mode == AppMode::Radio {
+                            if app.mode == AppMode::Radio
+                                || (app.mode == AppMode::Subsonic
+                                    && app.subsonic_view == SubsonicView::Servers)
+                            {
                                 if !is_repeat {
                                     app.open_delete_modal();
                                 }

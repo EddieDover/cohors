@@ -1314,7 +1314,7 @@ fn test_add_modal_navigation() {
 }
 
 #[test]
-fn test_add_modal_navidrome_flow() {
+fn test_add_modal_subsonic_flow() {
     let temp = tempfile::TempDir::new().unwrap();
     let config_dir = temp.path().to_path_buf();
 
@@ -1324,9 +1324,9 @@ fn test_add_modal_navidrome_flow() {
         // Open modal
         app.open_add_modal();
 
-        // Select Navidrome
+        // Select Subsonic
         app.handle_add_modal_input(KeyCode::Char('n'));
-        if let Some(AddModalState::InputNavidrome {
+        if let Some(AddModalState::InputSubsonic {
             server_url,
             focused_field,
             ..
@@ -1335,7 +1335,7 @@ fn test_add_modal_navidrome_flow() {
             assert_eq!(server_url, "");
             assert_eq!(*focused_field, 0);
         } else {
-            panic!("Expected InputNavidrome state");
+            panic!("Expected InputSubsonic state");
         }
 
         // Type server URL
@@ -1348,10 +1348,10 @@ fn test_add_modal_navidrome_flow() {
         app.handle_add_modal_input(KeyCode::Down);
         app.handle_add_modal_input(KeyCode::Down);
 
-        if let Some(AddModalState::InputNavidrome { focused_field, .. }) = &app.add_modal_state {
+        if let Some(AddModalState::InputSubsonic { focused_field, .. }) = &app.add_modal_state {
             assert_eq!(*focused_field, 2);
         } else {
-            panic!("Expected InputNavidrome state after navigation");
+            panic!("Expected InputSubsonic state after navigation");
         }
     });
 }
@@ -1395,7 +1395,7 @@ fn test_add_modal_validation() {
         Some(AddModalState::InputStation { .. })
     ));
 
-    // 3. Navidrome Validation
+    // 3. Subsonic Validation
     app.add_modal_state = None;
     app.notification = None;
     app.open_add_modal();
@@ -1409,7 +1409,7 @@ fn test_add_modal_validation() {
     // Should still be in modal
     assert!(matches!(
         app.add_modal_state,
-        Some(AddModalState::InputNavidrome { .. })
+        Some(AddModalState::InputSubsonic { .. })
     ));
 
     // 2. Source Validation
@@ -1452,25 +1452,25 @@ fn test_update_mpris_state() {
     assert_eq!(state.duration, Some(Duration::from_secs(180)));
 }
 #[test]
-fn test_navidrome_enter_artist_fail() {
+fn test_subsonic_enter_artist_fail() {
     let mut app = App::new_test();
-    app.mode = AppMode::Navidrome;
-    app.navidrome_view = crate::app::NavidromeView::Artists;
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = crate::app::SubsonicView::Artists;
     
-    app.navidrome_clients.push(crate::navidrome::SubsonicClient::new(
-        crate::config::NavidromeSourceConfig {
+    app.subsonic_clients.push(crate::subsonic::SubsonicClient::new(
+        crate::config::SubsonicSourceConfig {
             server_url: "http://127.0.0.1:0".to_string(),
             username: "u".to_string(),
             password: Some("p".to_string()),
             auth_token: None,
         }
     ));
-    app.navidrome_artists.push(crate::navidrome::Artist {
+    app.subsonic_artists.push(crate::subsonic::Artist {
         id: "1".to_string(),
         name: "Artist".to_string(),
         album_count: None,
     });
-    app.navidrome_state.select(Some(0));
+    app.subsonic_state.select(Some(0));
     
     app.enter_directory();
     
@@ -1479,20 +1479,20 @@ fn test_navidrome_enter_artist_fail() {
 }
 
 #[test]
-fn test_navidrome_enter_album_fail() {
+fn test_subsonic_enter_album_fail() {
     let mut app = App::new_test();
-    app.mode = AppMode::Navidrome;
-    app.navidrome_view = crate::app::NavidromeView::Albums("1".to_string());
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = crate::app::SubsonicView::Albums("1".to_string());
     
-    app.navidrome_clients.push(crate::navidrome::SubsonicClient::new(
-        crate::config::NavidromeSourceConfig {
+    app.subsonic_clients.push(crate::subsonic::SubsonicClient::new(
+        crate::config::SubsonicSourceConfig {
             server_url: "http://127.0.0.1:0".to_string(),
             username: "u".to_string(),
             password: Some("p".to_string()),
             auth_token: None,
         }
     ));
-    app.navidrome_albums.push(crate::navidrome::Album {
+    app.subsonic_albums.push(crate::subsonic::Album {
         id: "10".to_string(),
         name: "Album".to_string(),
         artist: None,
@@ -1501,7 +1501,7 @@ fn test_navidrome_enter_album_fail() {
         duration: None,
         year: None,
     });
-    app.navidrome_state.select(Some(0));
+    app.subsonic_state.select(Some(0));
     
     app.enter_directory();
     
@@ -1510,20 +1510,20 @@ fn test_navidrome_enter_album_fail() {
 }
 
 #[test]
-fn test_navidrome_enter_track() {
+fn test_subsonic_enter_track() {
     let mut app = App::new_test();
-    app.mode = AppMode::Navidrome;
-    app.navidrome_view = crate::app::NavidromeView::Tracks("10".to_string());
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = crate::app::SubsonicView::Tracks("10".to_string());
     
-    app.navidrome_clients.push(crate::navidrome::SubsonicClient::new(
-        crate::config::NavidromeSourceConfig {
+    app.subsonic_clients.push(crate::subsonic::SubsonicClient::new(
+        crate::config::SubsonicSourceConfig {
             server_url: "http://127.0.0.1:0".to_string(),
             username: "u".to_string(),
             password: Some("p".to_string()),
             auth_token: None,
         }
     ));
-    app.navidrome_tracks.push(crate::navidrome::Track {
+    app.subsonic_tracks.push(crate::subsonic::Track {
         id: "100".to_string(),
         parent: None,
         is_dir: false,
@@ -1534,31 +1534,35 @@ fn test_navidrome_enter_track() {
         duration: None,
         size: None,
     });
-    app.navidrome_state.select(Some(0));
+    app.subsonic_state.select(Some(0));
     
     app.enter_directory();
     
     assert_eq!(app.current_track, Some(PathBuf::from("Artist - Track")));
 }
 #[test]
-fn test_navidrome_go_up() {
+fn test_subsonic_go_up() {
     let mut app = App::new_test();
-    app.mode = AppMode::Navidrome;
+    app.mode = AppMode::Subsonic;
     
     // From Tracks to Albums
-    app.navidrome_view = crate::app::NavidromeView::Tracks("10".to_string());
+    app.subsonic_view = crate::app::SubsonicView::Tracks("10".to_string());
     app.go_up();
-    assert!(matches!(app.navidrome_view, crate::app::NavidromeView::Albums(_)));
+    assert!(matches!(app.subsonic_view, crate::app::SubsonicView::Albums(_)));
     
     // From Albums to Artists
-    app.navidrome_view = crate::app::NavidromeView::Albums("10".to_string());
+    app.subsonic_view = crate::app::SubsonicView::Albums("10".to_string());
     app.go_up();
-    assert!(matches!(app.navidrome_view, crate::app::NavidromeView::Artists));
+    assert!(matches!(app.subsonic_view, crate::app::SubsonicView::Artists));
     
-    // From Artists should remain Artists
-    app.navidrome_view = crate::app::NavidromeView::Artists;
+    // From Artists to Servers
+    app.subsonic_view = crate::app::SubsonicView::Artists;
     app.go_up();
-    assert!(matches!(app.navidrome_view, crate::app::NavidromeView::Artists));
+    assert!(matches!(app.subsonic_view, crate::app::SubsonicView::Servers));
+    
+    // From Servers should remain Servers
+    app.go_up();
+    assert!(matches!(app.subsonic_view, crate::app::SubsonicView::Servers));
 }
 #[test]
 fn test_app_new_coverage() {
