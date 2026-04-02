@@ -104,9 +104,13 @@ fn get_config_path() -> PathBuf {
 pub fn delete_navidrome_from_config(server_url: &str) -> Result<()> {
     let mut config = AppConfig::load()?;
     if let Some(navidrome) = &mut config.navidrome
-        && let Some(idx) = navidrome.sources.iter().position(|s| s.server_url == server_url) {
-            navidrome.sources.remove(idx);
-            config.save()?;
-        }
+        && let Some(idx) = navidrome
+            .sources
+            .iter()
+            .position(|s| s.server_url == server_url)
+    {
+        navidrome.sources.remove(idx);
+        config.save()?;
+    }
     Ok(())
 }

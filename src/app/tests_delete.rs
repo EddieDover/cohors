@@ -221,7 +221,13 @@ fn test_open_delete_modal_navidrome() {
         app_config.save_to(&config_path).unwrap();
 
         // Load into app
-        app.navidrome_clients = app_config.navidrome.unwrap().sources.into_iter().map(crate::navidrome::SubsonicClient::new).collect();
+        app.navidrome_clients = app_config
+            .navidrome
+            .unwrap()
+            .sources
+            .into_iter()
+            .map(crate::navidrome::SubsonicClient::new)
+            .collect();
         app.active_navidrome_client = 0;
         app.mode = AppMode::Navidrome;
 

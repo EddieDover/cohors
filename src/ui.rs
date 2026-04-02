@@ -452,7 +452,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             let title = if !app.navidrome_clients.is_empty() {
                 format!(
                     " Navidrome ({}) ",
-                    app.navidrome_clients[app.active_navidrome_client].config.server_url
+                    app.navidrome_clients[app.active_navidrome_client]
+                        .config
+                        .server_url
                 )
             } else {
                 " Navidrome ".to_string()
@@ -468,26 +470,45 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 );
 
             f.render_stateful_widget(nav_list, top_chunks[0], &mut app.navidrome_state);
-            
+
             // Render basic metadata info
             let info_text = if let Some(i) = app.navidrome_state.selected() {
                 match app.navidrome_view {
                     crate::app::NavidromeView::Artists => {
                         if let Some(a) = app.navidrome_artists.get(i) {
                             format!("Artist: {}\nAlbums: {}", a.name, a.album_count.unwrap_or(0))
-                        } else { String::new() }
-                    },
+                        } else {
+                            String::new()
+                        }
+                    }
                     crate::app::NavidromeView::Albums(_) => {
                         if let Some(a) = app.navidrome_albums.get(i) {
                             let duration = a.duration.unwrap_or(0);
-                            format!("Album: {}\nTracks: {}\nDuration: {}:{:02}", a.name, a.song_count.unwrap_or(0), duration / 60, duration % 60)
-                        } else { String::new() }
+                            format!(
+                                "Album: {}\nTracks: {}\nDuration: {}:{:02}",
+                                a.name,
+                                a.song_count.unwrap_or(0),
+                                duration / 60,
+                                duration % 60
+                            )
+                        } else {
+                            String::new()
+                        }
                     }
                     crate::app::NavidromeView::Tracks(_) => {
                         if let Some(t) = app.navidrome_tracks.get(i) {
                             let duration = t.duration.unwrap_or(0);
-                            format!("Track: {}\nArtist: {}\nDuration: {}:{:02}\nSize: {} MB", t.title, t.artist.as_deref().unwrap_or("Unknown"), duration / 60, duration % 60, t.size.unwrap_or(0) / 1024 / 1024)
-                        } else { String::new() }
+                            format!(
+                                "Track: {}\nArtist: {}\nDuration: {}:{:02}\nSize: {} MB",
+                                t.title,
+                                t.artist.as_deref().unwrap_or("Unknown"),
+                                duration / 60,
+                                duration % 60,
+                                t.size.unwrap_or(0) / 1024 / 1024
+                            )
+                        } else {
+                            String::new()
+                        }
                     }
                 }
             } else {
@@ -559,7 +580,14 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
             AddModalState::Selection => {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(3), Constraint::Length(3), Constraint::Length(3)].as_ref())
+                    .constraints(
+                        [
+                            Constraint::Length(3),
+                            Constraint::Length(3),
+                            Constraint::Length(3),
+                        ]
+                        .as_ref(),
+                    )
                     .margin(2)
                     .split(inner);
 

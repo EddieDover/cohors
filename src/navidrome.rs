@@ -230,4 +230,3 @@ impl SubsonicClient {
 
 #[cfg(test)]
 mod tests;
-
