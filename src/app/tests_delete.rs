@@ -1,6 +1,7 @@
 use super::*;
 use crate::config::{
-    AppConfig, IndividualStationConfig, RadioConfig, RadioSourceConfig, StationMapping,
+    AbsConfig, AbsSourceConfig, AppConfig, IndividualStationConfig, RadioConfig, RadioSourceConfig,
+    StationMapping,
 };
 use crate::radio::RadioStation;
 use crossterm::event::KeyCode;
@@ -296,5 +297,87 @@ fn test_confirm_delete_subsonic() {
         let config: AppConfig = serde_json::from_str(&content).unwrap();
         assert!(config.subsonic.is_some());
         assert_eq!(config.subsonic.unwrap().sources.len(), 0);
+    });
+}
+
+#[test]
+fn test_open_delete_modal_abs() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_dir = temp.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
+
+    with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
+
+        let app_config = AppConfig {
+            audiobookshelf: Some(AbsConfig {
+                sources: vec![AbsSourceConfig {
+                    server_url: "http://abs.local".to_string(),
+                    username: "user".to_string(),
+                    api_token: "token".to_string(),
+                }],
+            }),
+            ..Default::default()
+        };
+        app_config.save_to(&config_path).unwrap();
+
+        app.abs_clients = app_config
+            .audiobookshelf
+            .unwrap()
+            .sources
+            .into_iter()
+            .map(crate::audiobookshelf::AudioBookshelfClient::new)
+            .collect();
+        app.abs_view = AbsView::Servers;
+        app.abs_state.select(Some(0));
+        app.mode = AppMode::AudioBookshelf;
+
+        app.open_delete_modal();
+
+        if let Some(AddModalState::Confirmation { context, .. }) = &app.add_modal_state {
+            match context {
+                ConfirmationContext::DeleteAbs(url) => assert_eq!(url, "http://abs.local"),
+                _ => panic!("Expected DeleteAbs context"),
+            }
+        } else {
+            panic!("Expected Confirmation modal");
+        }
+    });
+}
+
+#[test]
+fn test_confirm_delete_abs() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_dir = temp.path().to_path_buf();
+    let config_path = config_dir.join("cohors/config.json");
+
+    with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
+
+        let app_config = AppConfig {
+            audiobookshelf: Some(AbsConfig {
+                sources: vec![AbsSourceConfig {
+                    server_url: "http://abs.local".to_string(),
+                    username: "user".to_string(),
+                    api_token: "token".to_string(),
+                }],
+            }),
+            ..Default::default()
+        };
+        app_config.save_to(&config_path).unwrap();
+
+        app.add_modal_state = Some(AddModalState::Confirmation {
+            message: "Delete ABS server?".to_string(),
+            context: ConfirmationContext::DeleteAbs("http://abs.local".to_string()),
+        });
+
+        app.handle_add_modal_input(KeyCode::Char('y'));
+
+        assert!(app.add_modal_state.is_none());
+
+        let content = fs::read_to_string(&config_path).unwrap();
+        let config: AppConfig = serde_json::from_str(&content).unwrap();
+        assert!(config.audiobookshelf.is_some());
+        assert_eq!(config.audiobookshelf.unwrap().sources.len(), 0);
     });
 }

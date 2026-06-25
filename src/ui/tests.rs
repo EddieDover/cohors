@@ -589,3 +589,130 @@ fn test_ui_draw_subsonic_tracks() {
     app.subsonic_state.select(None);
     terminal.draw(|f| draw(f, &mut app)).unwrap();
 }
+
+// ─── AudioBookshelf UI tests ──────────────────────────────────────────────────
+
+fn make_abs_client() -> crate::audiobookshelf::AudioBookshelfClient {
+    crate::audiobookshelf::AudioBookshelfClient::new(crate::config::AbsSourceConfig {
+        server_url: "http://abs.test:13378".to_string(),
+        username: "user".to_string(),
+        api_token: "token".to_string(),
+    })
+}
+
+fn make_abs_ep(id: &str, finished: bool, current_time: f64) -> crate::audiobookshelf::AbsEpisode {
+    crate::audiobookshelf::AbsEpisode {
+        id: id.to_string(),
+        library_item_id: "pod1".to_string(),
+        title: format!("Episode {id}"),
+        description: Some("A great episode.".to_string()),
+        published_at: Some(946684800000), // 2000-01-01
+        duration: Some(3600.0),
+        is_finished: finished,
+        current_time,
+    }
+}
+
+#[test]
+fn test_ui_draw_abs_servers() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = crate::app::AbsView::Servers;
+    app.abs_clients.push(make_abs_client());
+    app.abs_state.select(Some(0));
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    app.abs_state.select(None);
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
+
+#[test]
+fn test_ui_draw_abs_libraries() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = crate::app::AbsView::Libraries;
+    app.abs_clients.push(make_abs_client());
+    app.abs_libraries.push(crate::audiobookshelf::AbsLibrary {
+        id: "lib1".to_string(),
+        name: "Podcasts".to_string(),
+        media_type: "podcast".to_string(),
+    });
+    app.abs_state.select(Some(0));
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    app.abs_state.select(None);
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
+
+#[test]
+fn test_ui_draw_abs_podcasts() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = crate::app::AbsView::Podcasts("lib1".to_string());
+    app.abs_clients.push(make_abs_client());
+    app.abs_podcasts.push(crate::audiobookshelf::AbsPodcast {
+        id: "pod1".to_string(),
+        media: crate::audiobookshelf::AbsPodcastMedia {
+            metadata: crate::audiobookshelf::AbsPodcastMetadata {
+                title: "My Podcast".to_string(),
+                author: Some("Jane Doe".to_string()),
+                description: None,
+            },
+            episodes: vec![],
+            num_episodes: Some(42),
+        },
+    });
+    app.abs_state.select(Some(0));
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    app.abs_state.select(None);
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
+
+#[test]
+fn test_ui_draw_abs_episodes() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = crate::app::AbsView::Episodes("pod1".to_string());
+    app.abs_clients.push(make_abs_client());
+    app.abs_episodes = vec![
+        make_abs_ep("ep1", false, 0.0),    // unplayed
+        make_abs_ep("ep2", false, 600.0),  // in progress
+        make_abs_ep("ep3", true, 3600.0),  // finished
+    ];
+    // Iterate each row to exercise all info-panel branches
+    for i in 0..3 {
+        app.abs_state.select(Some(i));
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+    app.abs_state.select(None);
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
+
+#[test]
+fn test_ui_draw_abs_episodes_filter_sort_hints() {
+    let backend = TestBackend::new(100, 50);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = crate::app::AbsView::Episodes("pod1".to_string());
+    app.abs_clients.push(make_abs_client());
+    app.abs_episodes = vec![make_abs_ep("ep1", false, 0.0)];
+    app.abs_state.select(Some(0));
+
+    app.abs_hide_played = true;
+    app.abs_sort_oldest_first = true;
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+
+    app.abs_hide_played = false;
+    app.abs_sort_oldest_first = false;
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+}
