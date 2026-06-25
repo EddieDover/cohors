@@ -2159,6 +2159,71 @@ fn test_abs_previous_no_selection() {
     assert_eq!(app.abs_state.selected(), Some(0));
 }
 
+// ─── AddModal: Selection → InputAbs via Char('b') ────────────────────────────
+
+#[test]
+fn test_add_modal_selection_char_b_opens_input_abs() {
+    let mut app = App::new_test();
+    app.add_modal_state = Some(AddModalState::Selection);
+    app.handle_add_modal_input(KeyCode::Char('b'));
+    assert!(matches!(app.add_modal_state, Some(AddModalState::InputAbs { .. })));
+}
+
+// ─── abs_play_next_episode: body coverage ────────────────────────────────────
+
+#[test]
+fn test_abs_play_next_all_episodes_filtered_out() {
+    // Covers the None => 0 branch and the find-returning-None path (no network).
+    let mut app = App::new_test();
+    app.abs_current_library_item_id = Some("pod1".to_string());
+    app.abs_current_episode_id = None; // covers None => 0 branch
+    app.abs_episodes = vec![make_abs_ep("ep1", 1000, true)]; // finished
+    app.abs_hide_played = true; // filter them out → find returns None → no network call
+    app.abs_clients = vec![crate::audiobookshelf::AudioBookshelfClient::new(
+        crate::config::AbsSourceConfig {
+            server_url: "http://127.0.0.1:1".to_string(),
+            username: "u".to_string(),
+            api_token: "t".to_string(),
+        },
+    )];
+    app.abs_play_next_episode(); // should not panic and make no network call
+    assert!(app.notification.is_none());
+}
+
+#[test]
+fn test_abs_play_next_network_fail_covers_err_branch() {
+    // Covers the Some(id) → position path AND the Err branch from the network call.
+    // Port 1 on loopback fails with ECONNREFUSED instantly.
+    let mut app = App::new_test();
+    app.abs_current_library_item_id = Some("pod1".to_string());
+    // current episode ep0 is NOT in abs_episodes → unwrap_or(0) kicks in, but
+    // more importantly this exercises the Some(id) → position branch.
+    app.abs_current_episode_id = Some("ep0".to_string());
+    app.abs_episodes = vec![make_abs_ep("ep1", 1000, false)];
+    app.abs_hide_played = false;
+    app.abs_clients = vec![crate::audiobookshelf::AudioBookshelfClient::new(
+        crate::config::AbsSourceConfig {
+            server_url: "http://127.0.0.1:1".to_string(), // guaranteed ECONNREFUSED
+            username: "u".to_string(),
+            api_token: "t".to_string(),
+        },
+    )];
+    app.abs_play_next_episode();
+    // The Err branch sets a notification
+    assert!(app.notification.is_some());
+}
+
+// ─── enter_directory: Subsonic with no clients ───────────────────────────────
+
+#[test]
+fn test_enter_directory_subsonic_no_clients_returns_early() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_clients = vec![];
+    app.subsonic_state.select(Some(0));
+    app.enter_directory(); // hits the `return` at line 809
+}
+
 // ─── Search in Subsonic / Favorites modes ───────────────────────────────────
 
 #[test]
@@ -2249,4 +2314,119 @@ fn test_enter_directory_favorites_station() {
     app.favorites_state.select(Some(0));
     app.enter_directory(); // plays the station
     // Just verify it doesn't panic; play_radio spawns a thread
+}
+
+// ─── Additional edge-case coverage ───────────────────────────────────────────
+
+#[test]
+fn test_radio_previous_no_selection() {
+    // Covers None => 0 branch in previous() for Radio mode
+    let mut app = App::new_test();
+    app.mode = AppMode::Radio;
+    app.radio_groups = vec![crate::radio::RadioGroup {
+        title: "G".to_string(),
+        stations: vec![],
+        is_expanded: false,
+    }];
+    app.update_search_results();
+    app.radio_state.select(None);
+    app.previous();
+    assert_eq!(app.radio_state.selected(), Some(0));
+}
+
+#[test]
+fn test_enter_directory_filesystem_no_selection() {
+    // Covers the None branch of the if-let in FileSystem enter_directory
+    let mut app = App::new_test();
+    app.mode = AppMode::FileSystem;
+    app.state.select(None);
+    app.enter_directory(); // no-op, should not panic
+}
+
+#[test]
+fn test_enter_directory_favorites_no_selection() {
+    // Covers the None branch of favorites_state.selected()
+    let mut app = App::new_test();
+    app.mode = AppMode::Favorites;
+    app.favorites_state.select(None);
+    app.enter_directory(); // no-op
+}
+
+#[test]
+fn test_enter_directory_radio_no_groups_action_none() {
+    // Covers the None => {} arm when no groups match (action stays None)
+    let mut app = App::new_test();
+    app.mode = AppMode::Radio;
+    // No groups → filtered_radio_groups empty → loop never fires → action = None
+    app.radio_state.select(Some(0));
+    app.enter_directory(); // reaches None => {}
+}
+
+#[test]
+fn test_enter_directory_radio_loop_skips_expanded_group() {
+    // Covers current_idx += group.stations.len() when selection is past an expanded group
+    let station = crate::radio::RadioStation {
+        name: "S1".to_string(),
+        url: "http://s1".to_string(),
+        description: None,
+        homepage: None,
+        tags: None,
+        last_playing: None,
+    };
+    let mut app = App::new_test();
+    app.mode = AppMode::Radio;
+    app.radio_groups = vec![
+        crate::radio::RadioGroup {
+            title: "Group 1".to_string(),
+            stations: vec![station],
+            is_expanded: true,
+        },
+        crate::radio::RadioGroup {
+            title: "Group 2".to_string(),
+            stations: vec![],
+            is_expanded: false,
+        },
+    ];
+    app.update_search_results();
+    // Index layout: 0=G1header, 1=S1, 2=G2header
+    // Selecting G2header (index 2) forces the loop to skip past G1's stations
+    app.radio_state.select(Some(2));
+    app.enter_directory(); // ToggleGroup(1) after skipping G1's expanded stations
+    assert!(app.radio_groups[1].is_expanded);
+}
+
+#[test]
+fn test_get_selected_station_past_first_group() {
+    // Covers the current_idx += group.stations.len() path and the final None return
+    let make_station = |name: &str, url: &str| crate::radio::RadioStation {
+        name: name.to_string(),
+        url: url.to_string(),
+        description: None,
+        homepage: None,
+        tags: None,
+        last_playing: None,
+    };
+    let mut app = App::new_test();
+    app.radio_groups = vec![
+        crate::radio::RadioGroup {
+            title: "G1".to_string(),
+            stations: vec![make_station("S1", "http://s1"), make_station("S2", "http://s2")],
+            is_expanded: true,
+        },
+        crate::radio::RadioGroup {
+            title: "G2".to_string(),
+            stations: vec![make_station("S3", "http://s3")],
+            is_expanded: true,
+        },
+    ];
+    app.update_search_results();
+    // Index layout: 0=G1h, 1=S1, 2=S2, 3=G2h, 4=S3
+    // G2 header → should return None
+    app.radio_state.select(Some(3));
+    assert!(app.get_selected_station().is_none());
+    // S3 → should return Some, requiring loop to skip G1's stations
+    app.radio_state.select(Some(4));
+    let s = app.get_selected_station();
+    assert!(s.is_some());
+    assert_eq!(s.unwrap().name, "S3");
 }
