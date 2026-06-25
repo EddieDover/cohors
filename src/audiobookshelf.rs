@@ -341,6 +341,9 @@ impl AudioBookshelfClient {
     }
 }
 
+#[cfg(test)]
+mod tests;
+
 // --- Utility ---
 
 /// Converts a Unix timestamp in milliseconds to a YYYY-MM-DD string.
