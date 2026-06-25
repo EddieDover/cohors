@@ -13,6 +13,8 @@ pub struct AppConfig {
     pub favorites: Favorites,
     #[serde(default)]
     pub subsonic: Option<SubsonicConfig>,
+    #[serde(default)]
+    pub audiobookshelf: Option<AbsConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -26,6 +28,18 @@ pub struct SubsonicSourceConfig {
     pub username: String,
     pub password: Option<String>,
     pub auth_token: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct AbsConfig {
+    pub sources: Vec<AbsSourceConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct AbsSourceConfig {
+    pub server_url: String,
+    pub username: String,
+    pub api_token: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -110,6 +124,17 @@ pub fn delete_subsonic_from_config(server_url: &str) -> Result<()> {
             .position(|s| s.server_url == server_url)
     {
         subsonic.sources.remove(idx);
+        config.save()?;
+    }
+    Ok(())
+}
+
+pub fn delete_abs_from_config(server_url: &str) -> Result<()> {
+    let mut config = AppConfig::load()?;
+    if let Some(abs) = &mut config.audiobookshelf
+        && let Some(idx) = abs.sources.iter().position(|s| s.server_url == server_url)
+    {
+        abs.sources.remove(idx);
         config.save()?;
     }
     Ok(())

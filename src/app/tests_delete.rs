@@ -33,6 +33,7 @@ fn test_open_delete_modal_station() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -101,6 +102,7 @@ fn test_open_delete_modal_source() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -156,6 +158,7 @@ fn test_confirm_delete_station() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -217,6 +220,7 @@ fn test_open_delete_modal_subsonic() {
             }),
             radio: Default::default(),
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -271,6 +275,7 @@ fn test_confirm_delete_subsonic() {
             }),
             radio: Default::default(),
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 

@@ -33,6 +33,7 @@ fn test_open_edit_modal_station() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -113,6 +114,7 @@ fn test_open_edit_modal_second_station() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -200,6 +202,7 @@ fn test_open_edit_modal_source() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -264,6 +267,7 @@ fn test_edit_station_flow() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -325,6 +329,7 @@ fn test_edit_source_flow() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -373,6 +378,7 @@ fn test_reload_stations_integration() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -425,6 +431,7 @@ fn test_open_edit_modal_subsonic() {
             }),
             radio: Default::default(),
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 

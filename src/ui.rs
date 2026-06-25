@@ -1,4 +1,4 @@
-use crate::app::{AddModalState, App, AppMode, LoopMode};
+use crate::app::{AbsView, AddModalState, App, AppMode, LoopMode};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -138,11 +138,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let num_bars = data.len() as u16;
     let bar_gap = 1;
     let total_gap = bar_gap * (num_bars.saturating_sub(1));
-    let bar_width = if num_bars > 0 {
-        (inner_width.saturating_sub(total_gap)) / num_bars
-    } else {
-        3
-    };
+    let bar_width = inner_width
+        .saturating_sub(total_gap)
+        .checked_div(num_bars)
+        .unwrap_or(3);
 
     let barchart = BarChart::default()
         .block(vis_block)
@@ -539,6 +538,147 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             let info_paragraph = Paragraph::new(info_text).block(info_block);
             f.render_widget(info_paragraph, top_chunks[1]);
         }
+        AppMode::AudioBookshelf => {
+            let top_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+                .split(chunks[0]);
+
+            let items: Vec<ListItem> = match &app.abs_view {
+                AbsView::Servers => app
+                    .abs_clients
+                    .iter()
+                    .map(|c| ListItem::new(c.config.server_url.clone()))
+                    .collect(),
+                AbsView::Libraries => app
+                    .abs_libraries
+                    .iter()
+                    .map(|l| ListItem::new(l.name.clone()))
+                    .collect(),
+                AbsView::Podcasts(_) => app
+                    .abs_podcasts
+                    .iter()
+                    .map(|p| {
+                        ListItem::new(format!(
+                            "{} ({})",
+                            p.title(),
+                            p.num_episodes()
+                        ))
+                    })
+                    .collect(),
+                AbsView::Episodes(_) => app
+                    .abs_episodes
+                    .iter()
+                    .map(|ep| {
+                        let played = if ep.is_finished { " ✓" } else { "" };
+                        ListItem::new(format!(
+                            "[{}] {}{}",
+                            ep.published_date(),
+                            ep.title,
+                            played
+                        ))
+                    })
+                    .collect(),
+            };
+
+            let title = match &app.abs_view {
+                AbsView::Servers => " AudioBookshelf Servers ".to_string(),
+                _ => {
+                    if !app.abs_clients.is_empty() {
+                        format!(
+                            " AudioBookshelf ({}) ",
+                            app.abs_clients[app.active_abs_client].config.server_url
+                        )
+                    } else {
+                        " AudioBookshelf ".to_string()
+                    }
+                }
+            };
+
+            let nav_list = ratatui::widgets::List::new(items)
+                .block(Block::default().borders(Borders::ALL).title(title))
+                .highlight_style(
+                    Style::default()
+                        .bg(ratatui::style::Color::Yellow)
+                        .fg(ratatui::style::Color::Black)
+                        .add_modifier(ratatui::style::Modifier::BOLD),
+                );
+
+            f.render_stateful_widget(nav_list, top_chunks[0], &mut app.abs_state);
+
+            let info_text = if let Some(i) = app.abs_state.selected() {
+                match &app.abs_view {
+                    AbsView::Servers => {
+                        if let Some(c) = app.abs_clients.get(i) {
+                            format!("Server: {}\nUser: {}", c.config.server_url, c.config.username)
+                        } else {
+                            String::new()
+                        }
+                    }
+                    AbsView::Libraries => {
+                        if let Some(l) = app.abs_libraries.get(i) {
+                            format!("Library: {}", l.name)
+                        } else {
+                            String::new()
+                        }
+                    }
+                    AbsView::Podcasts(_) => {
+                        if let Some(p) = app.abs_podcasts.get(i) {
+                            format!(
+                                "Podcast: {}\nAuthor: {}\nEpisodes: {}",
+                                p.title(),
+                                p.author().unwrap_or("Unknown"),
+                                p.num_episodes()
+                            )
+                        } else {
+                            String::new()
+                        }
+                    }
+                    AbsView::Episodes(_) => {
+                        if let Some(ep) = app.abs_episodes.get(i) {
+                            let duration_str = ep.duration_str();
+                            let played_str = if ep.is_finished {
+                                "Yes".to_string()
+                            } else if ep.current_time > 0.0 {
+                                let secs = ep.current_time as u64;
+                                format!("In progress ({}:{:02})", secs / 60, secs % 60)
+                            } else {
+                                "No".to_string()
+                            };
+                            format!(
+                                "Episode: {}\nDate: {}\nDuration: {}\nPlayed: {}\n\n{}",
+                                ep.title,
+                                ep.published_date(),
+                                duration_str,
+                                played_str,
+                                ep.description.as_deref().unwrap_or("")
+                            )
+                        } else {
+                            String::new()
+                        }
+                    }
+                }
+            } else {
+                "No selection".to_string()
+            };
+
+            // Show filter/sort hints when in episode view
+            let info_title = if matches!(app.abs_view, AbsView::Episodes(_)) {
+                let sort_str = if app.abs_sort_oldest_first {
+                    "Oldest→Newest"
+                } else {
+                    "Newest→Oldest"
+                };
+                let filter_str = if app.abs_hide_played { "ON" } else { "OFF" };
+                format!(" Info | p:Filter played({}) s:Sort({}) ", filter_str, sort_str)
+            } else {
+                " Info ".to_string()
+            };
+
+            let info_block = Block::default().borders(Borders::ALL).title(info_title);
+            let info_paragraph = Paragraph::new(info_text).block(info_block).wrap(ratatui::widgets::Wrap { trim: false });
+            f.render_widget(info_paragraph, top_chunks[1]);
+        }
     }
 
     // Help Bar
@@ -604,6 +744,10 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
             | AddModalState::InputSubsonic {
                 original_url: Some(_),
                 ..
+            }
+            | AddModalState::InputAbs {
+                original_url: Some(_),
+                ..
             } => "Edit",
             _ => "Add New",
         };
@@ -620,6 +764,7 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                             Constraint::Length(3),
                             Constraint::Length(3),
                             Constraint::Length(3),
+                            Constraint::Length(3),
                         ]
                         .as_ref(),
                     )
@@ -632,10 +777,13 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                     .alignment(ratatui::layout::Alignment::Center);
                 let p3 = Paragraph::new("Press 'n' to add a Subsonic Server")
                     .alignment(ratatui::layout::Alignment::Center);
+                let p4 = Paragraph::new("Press 'b' to add an AudioBookshelf Server")
+                    .alignment(ratatui::layout::Alignment::Center);
 
                 f.render_widget(p1, chunks[0]);
                 f.render_widget(p2, chunks[1]);
                 f.render_widget(p3, chunks[2]);
+                f.render_widget(p4, chunks[3]);
             }
             AddModalState::InputStation {
                 name,
@@ -936,6 +1084,64 @@ fn draw_add_modal(f: &mut Frame, app: &App) {
                 let help = Paragraph::new("Enter: Save | Esc: Cancel | Tab: Next Field")
                     .alignment(ratatui::layout::Alignment::Center)
                     .style(Style::default().fg(Color::Gray));
+                f.render_widget(help, chunks[4]);
+            }
+            AddModalState::InputAbs {
+                server_url,
+                username,
+                password,
+                focused_field,
+                original_url: _,
+            } => {
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints(
+                        [
+                            Constraint::Length(3), // Server URL
+                            Constraint::Length(3), // Username
+                            Constraint::Length(3), // Password
+                            Constraint::Min(0),    // Padding
+                            Constraint::Length(1), // Help text
+                        ]
+                        .as_ref(),
+                    )
+                    .margin(1)
+                    .split(inner);
+
+                for (i, (label, value, masked)) in [
+                    ("Server URL", server_url.as_str(), false),
+                    ("Username", username.as_str(), false),
+                    ("Password", password.as_str(), true),
+                ]
+                .iter()
+                .enumerate()
+                {
+                    let style = if *focused_field == i {
+                        Style::default().fg(Color::Yellow)
+                    } else {
+                        Style::default()
+                    };
+                    let display: String = if *masked {
+                        value.chars().map(|_| '*').collect()
+                    } else {
+                        value.to_string()
+                    };
+                    f.render_widget(
+                        Paragraph::new(display).block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title(*label)
+                                .style(style),
+                        ),
+                        chunks[i],
+                    );
+                }
+
+                let help = Paragraph::new(
+                    "Enter: Login & Save | Esc: Cancel | Tab: Next Field",
+                )
+                .alignment(ratatui::layout::Alignment::Center)
+                .style(Style::default().fg(Color::Gray));
                 f.render_widget(help, chunks[4]);
             }
             AddModalState::Confirmation {

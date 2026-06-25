@@ -38,6 +38,7 @@ fn test_add_station_to_config_existing_file() {
     let initial_config = AppConfig {
         volume: None,
         subsonic: None,
+        audiobookshelf: None,
         favorites: Default::default(),
         radio: RadioConfig {
             sources: Vec::new(),
@@ -109,6 +110,7 @@ fn test_delete_station_from_config() {
     let initial_config = AppConfig {
         volume: None,
         subsonic: None,
+        audiobookshelf: None,
         favorites: Default::default(),
         radio: RadioConfig {
             sources: Vec::new(),
@@ -145,6 +147,7 @@ fn test_delete_source_from_config() {
     let initial_config = AppConfig {
         volume: None,
         subsonic: None,
+        audiobookshelf: None,
         favorites: Default::default(),
         radio: RadioConfig {
             sources: vec![RadioSourceConfig {
@@ -187,6 +190,7 @@ fn test_edit_station_in_config() {
     let initial_config = AppConfig {
         volume: None,
         subsonic: None,
+        audiobookshelf: None,
         favorites: Default::default(),
         radio: RadioConfig {
             sources: Vec::new(),
@@ -254,6 +258,7 @@ fn test_edit_source_in_config() {
     let initial_config = AppConfig {
         volume: None,
         subsonic: None,
+        audiobookshelf: None,
         favorites: Default::default(),
         radio: RadioConfig {
             sources: vec![initial_source],
