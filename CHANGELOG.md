@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/EddieDover/cohors/compare/v0.10.0...v0.11.0) (2026-06-25)
+
+
+### Features
+
+* audiobookshelf podcast support ([42f0c39](https://github.com/EddieDover/cohors/commit/42f0c39095b4cfc76394058ed524995ddbeb8e85))
+
 ## [0.10.0](https://github.com/EddieDover/cohors/compare/v0.9.0...v0.10.0) (2026-04-02)
 
 
