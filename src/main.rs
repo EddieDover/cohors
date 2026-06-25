@@ -1,5 +1,6 @@
 mod app;
 mod audio;
+mod audiobookshelf;
 mod config;
 mod favorites;
 mod mpris;
@@ -132,6 +133,16 @@ fn main() -> Result<()> {
                 app.subsonic_state.select(Some(0));
             }
         }
+        if let Some(abs) = config.audiobookshelf {
+            app.abs_clients = abs
+                .sources
+                .into_iter()
+                .map(crate::audiobookshelf::AudioBookshelfClient::new)
+                .collect();
+            if !app.abs_clients.is_empty() {
+                app.abs_state.select(Some(0));
+            }
+        }
     }
 
     // Setup MPRIS
@@ -185,6 +196,29 @@ fn main() -> Result<()> {
             }
             Err(e) => {
                 eprintln!("Failed to load Subsonic library: {}", e);
+            }
+        }
+    }
+
+    // Fetch AudioBookshelf libraries
+    if !app.abs_clients.is_empty() {
+        let url = &app.abs_clients[0].config.server_url;
+        println!("Connecting to AudioBookshelf ({})...", url);
+        match rt.block_on(app.abs_clients[0].get_podcast_libraries()) {
+            Ok(libs) => {
+                println!(
+                    "Found {} podcasts {} on AudioBookshelf",
+                    libs.len(),
+                    if libs.len() == 1 {
+                        "library"
+                    } else {
+                        "libraries"
+                    }
+                );
+                app.abs_libraries = libs;
+            }
+            Err(e) => {
+                eprintln!("Failed to connect to AudioBookshelf: {}", e);
             }
         }
     }

@@ -1,4 +1,4 @@
-# Git Hooks for Praeda
+# Git Hooks for Cohors
 
 This directory contains git hooks that enforce code quality and commit standards.
 

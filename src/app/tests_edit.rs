@@ -33,6 +33,7 @@ fn test_open_edit_modal_station() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -113,6 +114,7 @@ fn test_open_edit_modal_second_station() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -200,6 +202,7 @@ fn test_open_edit_modal_source() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -264,6 +267,7 @@ fn test_edit_station_flow() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -325,6 +329,7 @@ fn test_edit_source_flow() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -373,6 +378,7 @@ fn test_reload_stations_integration() {
             subsonic: None,
             radio: radio_config,
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -425,6 +431,7 @@ fn test_open_edit_modal_subsonic() {
             }),
             radio: Default::default(),
             favorites: Default::default(),
+            ..Default::default()
         };
         app_config.save_to(&config_path).unwrap();
 
@@ -485,4 +492,160 @@ fn test_open_edit_modal_subsonic() {
             "http://navi.com2"
         );
     });
+}
+
+#[test]
+fn test_input_subsonic_navigation_and_char_backspace() {
+    let mut app = App::new_test();
+    app.add_modal_state = Some(AddModalState::InputSubsonic {
+        server_url: "http://navi".to_string(),
+        username: "u".to_string(),
+        password: "p".to_string(),
+        focused_field: 0,
+        original_url: None,
+    });
+
+    // Tab moves to field 1, BackTab moves back to 0, then wraps to 2
+    app.handle_add_modal_input(KeyCode::Tab);
+    if let Some(AddModalState::InputSubsonic { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 1);
+    }
+    app.handle_add_modal_input(KeyCode::BackTab);
+    if let Some(AddModalState::InputSubsonic { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 0);
+    }
+    // BackTab at field 0 wraps to field 2
+    app.handle_add_modal_input(KeyCode::BackTab);
+    if let Some(AddModalState::InputSubsonic { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 2);
+    }
+
+    // Char appends to password (field 2)
+    app.handle_add_modal_input(KeyCode::Char('x'));
+    // Backspace removes from password (field 2)
+    app.handle_add_modal_input(KeyCode::Backspace);
+
+    // Tab to field 0, then Char on server_url (field 0 already tested by existing test)
+    // Navigate to username (field 1) and type
+    if let Some(AddModalState::InputSubsonic { focused_field, .. }) = &mut app.add_modal_state {
+        *focused_field = 1;
+    }
+    app.handle_add_modal_input(KeyCode::Char('y'));
+    app.handle_add_modal_input(KeyCode::Backspace);
+
+    // Esc closes modal
+    app.handle_add_modal_input(KeyCode::Esc);
+    assert!(app.add_modal_state.is_none());
+}
+
+#[test]
+fn test_input_subsonic_add_new_server() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let config_dir = temp.path().to_path_buf();
+
+    crate::test_utils::with_xdg_config_home(&config_dir, || {
+        let mut app = App::new_test();
+        app.add_modal_state = Some(AddModalState::InputSubsonic {
+            server_url: "http://new-navi".to_string(),
+            username: "newuser".to_string(),
+            password: "newpass".to_string(),
+            focused_field: 0,
+            original_url: None, // add new
+        });
+        app.handle_add_modal_input(KeyCode::Enter);
+        // Validates and saves without network — subsonic just stores credentials
+        assert!(app.add_modal_state.is_none());
+    });
+}
+
+#[test]
+fn test_input_subsonic_empty_validation() {
+    let mut app = App::new_test();
+    app.add_modal_state = Some(AddModalState::InputSubsonic {
+        server_url: String::new(), // empty → validation fails
+        username: String::new(),
+        password: String::new(),
+        focused_field: 0,
+        original_url: None,
+    });
+    app.handle_add_modal_input(KeyCode::Enter);
+    // Notification set, modal stays open
+    assert!(app.add_modal_state.is_some());
+    assert!(app.notification.is_some());
+}
+
+#[test]
+fn test_input_abs_navigation_and_char_backspace() {
+    let mut app = App::new_test();
+    app.add_modal_state = Some(AddModalState::InputAbs {
+        server_url: "http://abs".to_string(),
+        username: "u".to_string(),
+        password: "p".to_string(),
+        focused_field: 0,
+        original_url: None,
+    });
+
+    // Tab forward
+    app.handle_add_modal_input(KeyCode::Tab);
+    if let Some(AddModalState::InputAbs { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 1);
+    }
+    app.handle_add_modal_input(KeyCode::Tab);
+    if let Some(AddModalState::InputAbs { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 2);
+    }
+    app.handle_add_modal_input(KeyCode::Tab); // wraps to 0
+    if let Some(AddModalState::InputAbs { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 0);
+    }
+
+    // BackTab wraps from 0 to 2
+    app.handle_add_modal_input(KeyCode::BackTab);
+    if let Some(AddModalState::InputAbs { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 2);
+    }
+    // BackTab from 2 to 1
+    app.handle_add_modal_input(KeyCode::BackTab);
+    if let Some(AddModalState::InputAbs { focused_field, .. }) = &app.add_modal_state {
+        assert_eq!(*focused_field, 1);
+    }
+
+    // Char appends to current field (1 = username)
+    app.handle_add_modal_input(KeyCode::Char('z'));
+    // Backspace removes from current field
+    app.handle_add_modal_input(KeyCode::Backspace);
+
+    // Test on field 2 (password)
+    if let Some(AddModalState::InputAbs { focused_field, .. }) = &mut app.add_modal_state {
+        *focused_field = 2;
+    }
+    app.handle_add_modal_input(KeyCode::Char('s'));
+    app.handle_add_modal_input(KeyCode::Backspace);
+
+    // Test on field 0 (server_url) - also covered elsewhere but let's be thorough
+    if let Some(AddModalState::InputAbs { focused_field, .. }) = &mut app.add_modal_state {
+        *focused_field = 0;
+    }
+    app.handle_add_modal_input(KeyCode::Char('a'));
+    app.handle_add_modal_input(KeyCode::Backspace);
+
+    // Esc closes modal
+    app.handle_add_modal_input(KeyCode::Esc);
+    assert!(app.add_modal_state.is_none());
+}
+
+#[test]
+fn test_input_abs_empty_fields_validation() {
+    let mut app = App::new_test();
+    app.add_modal_state = Some(AddModalState::InputAbs {
+        server_url: String::new(), // empty
+        username: String::new(),
+        password: String::new(),
+        focused_field: 0,
+        original_url: None,
+    });
+    app.handle_add_modal_input(KeyCode::Enter);
+    // Validation fires: notification set, modal stays open
+    assert!(app.add_modal_state.is_some());
+    assert!(app.notification.is_some());
 }

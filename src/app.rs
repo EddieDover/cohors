@@ -33,6 +33,7 @@ pub enum AppMode {
     Radio,
     Favorites,
     Subsonic,
+    AudioBookshelf,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,6 +42,14 @@ pub enum SubsonicView {
     Artists,
     Albums(String),
     Tracks(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AbsView {
+    Servers,
+    Libraries,
+    Podcasts(String), // library_id
+    Episodes(String), // library_item_id
 }
 
 pub enum LoopMode {
@@ -54,6 +63,7 @@ pub enum ConfirmationContext {
     DeleteStation(String),
     DeleteSource(String),
     DeleteSubsonic(String),
+    DeleteAbs(String),
 }
 
 pub enum AddModalState {
@@ -80,6 +90,13 @@ pub enum AddModalState {
         original_title: Option<String>,
     },
     InputSubsonic {
+        server_url: String,
+        username: String,
+        password: String,
+        focused_field: usize,
+        original_url: Option<String>,
+    },
+    InputAbs {
         server_url: String,
         username: String,
         password: String,
@@ -148,6 +165,21 @@ pub struct App {
     pub subsonic_albums: Vec<crate::subsonic::Album>,
     pub subsonic_tracks: Vec<crate::subsonic::Track>,
     pub subsonic_view: SubsonicView,
+    // AudioBookshelf
+    pub abs_clients: Vec<crate::audiobookshelf::AudioBookshelfClient>,
+    pub active_abs_client: usize,
+    pub abs_state: ratatui::widgets::ListState,
+    pub abs_libraries: Vec<crate::audiobookshelf::AbsLibrary>,
+    pub abs_podcasts: Vec<crate::audiobookshelf::AbsPodcast>,
+    pub abs_raw_episodes: Vec<crate::audiobookshelf::AbsEpisode>,
+    pub abs_episodes: Vec<crate::audiobookshelf::AbsEpisode>,
+    pub abs_view: AbsView,
+    pub abs_hide_played: bool,
+    pub abs_sort_oldest_first: bool,
+    pub abs_current_episode_id: Option<String>,
+    pub abs_current_library_item_id: Option<String>,
+    /// Library id of the currently-open Podcasts/Episodes view (for back-navigation).
+    pub abs_active_library_id: String,
 }
 
 impl App {
@@ -220,6 +252,20 @@ impl App {
             subsonic_albums: Vec::new(),
             subsonic_tracks: Vec::new(),
             subsonic_view: SubsonicView::Servers,
+            // AudioBookshelf
+            abs_clients: Vec::new(),
+            active_abs_client: 0,
+            abs_state: ListState::default(),
+            abs_libraries: Vec::new(),
+            abs_podcasts: Vec::new(),
+            abs_raw_episodes: Vec::new(),
+            abs_episodes: Vec::new(),
+            abs_view: AbsView::Servers,
+            abs_hide_played: false,
+            abs_sort_oldest_first: true,
+            abs_current_episode_id: None,
+            abs_current_library_item_id: None,
+            abs_active_library_id: String::new(),
         };
         app.check_for_updates();
         app.load_directory();
@@ -283,6 +329,19 @@ impl App {
             subsonic_albums: Vec::new(),
             subsonic_tracks: Vec::new(),
             subsonic_view: SubsonicView::Servers,
+            abs_clients: Vec::new(),
+            active_abs_client: 0,
+            abs_state: ratatui::widgets::ListState::default(),
+            abs_libraries: Vec::new(),
+            abs_podcasts: Vec::new(),
+            abs_raw_episodes: Vec::new(),
+            abs_episodes: Vec::new(),
+            abs_view: AbsView::Servers,
+            abs_hide_played: false,
+            abs_sort_oldest_first: true,
+            abs_current_episode_id: None,
+            abs_current_library_item_id: None,
+            abs_active_library_id: String::new(),
         }
     }
     pub fn check_for_updates(&mut self) {
@@ -401,6 +460,7 @@ impl App {
             AppMode::Radio => self.radio_state.select(Some(0)),
             AppMode::Favorites => self.favorites_state.select(Some(0)),
             AppMode::Subsonic => self.subsonic_state.select(Some(0)),
+            AppMode::AudioBookshelf => self.abs_state.select(Some(0)),
         }
     }
 
@@ -413,6 +473,7 @@ impl App {
             AppMode::Radio => self.radio_state.select(Some(0)),
             AppMode::Favorites => self.favorites_state.select(Some(0)),
             AppMode::Subsonic => self.subsonic_state.select(Some(0)),
+            AppMode::AudioBookshelf => self.abs_state.select(Some(0)),
         }
     }
 
@@ -426,6 +487,7 @@ impl App {
             AppMode::Radio => self.radio_state.select(Some(0)),
             AppMode::Favorites => self.favorites_state.select(Some(0)),
             AppMode::Subsonic => self.subsonic_state.select(Some(0)),
+            AppMode::AudioBookshelf => self.abs_state.select(Some(0)),
         }
     }
 
@@ -525,6 +587,25 @@ impl App {
                 };
                 self.subsonic_state.select(Some(i));
             }
+            AppMode::AudioBookshelf => {
+                let count = match &self.abs_view {
+                    AbsView::Servers => self.abs_clients.len(),
+                    AbsView::Libraries => self.abs_libraries.len(),
+                    AbsView::Podcasts(_) => self.abs_podcasts.len(),
+                    AbsView::Episodes(_) => self.abs_episodes.len(),
+                };
+                let i = match self.abs_state.selected() {
+                    Some(i) => {
+                        if i >= count.saturating_sub(1) {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.abs_state.select(Some(i));
+            }
         }
     }
 
@@ -589,6 +670,25 @@ impl App {
                     None => 0,
                 };
                 self.subsonic_state.select(Some(i));
+            }
+            AppMode::AudioBookshelf => {
+                let count = match &self.abs_view {
+                    AbsView::Servers => self.abs_clients.len(),
+                    AbsView::Libraries => self.abs_libraries.len(),
+                    AbsView::Podcasts(_) => self.abs_podcasts.len(),
+                    AbsView::Episodes(_) => self.abs_episodes.len(),
+                };
+                let i = match self.abs_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            count.saturating_sub(1)
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.abs_state.select(Some(i));
             }
         }
     }
@@ -787,6 +887,108 @@ impl App {
                     }
                 }
             }
+            AppMode::AudioBookshelf => {
+                if let Some(i) = self.abs_state.selected() {
+                    if self.abs_clients.is_empty() {
+                        return;
+                    }
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+
+                    match &self.abs_view.clone() {
+                        AbsView::Servers => {
+                            self.active_abs_client = i;
+                            let client = &self.abs_clients[i];
+                            match rt.block_on(client.get_podcast_libraries()) {
+                                Ok(libs) => {
+                                    self.abs_libraries = libs;
+                                    self.abs_view = AbsView::Libraries;
+                                    self.abs_state.select(Some(0));
+                                }
+                                Err(e) => {
+                                    self.notification = Some((
+                                        format!("ABS error: {}", e),
+                                        std::time::Instant::now(),
+                                    ));
+                                }
+                            }
+                        }
+                        AbsView::Libraries => {
+                            if let Some(lib) = self.abs_libraries.get(i) {
+                                let lib_id = lib.id.clone();
+                                let client = &self.abs_clients[self.active_abs_client];
+                                match rt.block_on(client.get_podcasts(&lib_id)) {
+                                    Ok(podcasts) => {
+                                        self.abs_podcasts = podcasts;
+                                        self.abs_active_library_id = lib_id.clone();
+                                        self.abs_view = AbsView::Podcasts(lib_id);
+                                        self.abs_state.select(Some(0));
+                                    }
+                                    Err(e) => {
+                                        self.notification = Some((
+                                            format!("ABS error: {}", e),
+                                            std::time::Instant::now(),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        AbsView::Podcasts(_) => {
+                            if let Some(podcast) = self.abs_podcasts.get(i) {
+                                let item_id = podcast.id.clone();
+                                let client = &self.abs_clients[self.active_abs_client];
+                                match rt.block_on(client.get_episodes(&item_id)) {
+                                    Ok(episodes) => {
+                                        self.abs_raw_episodes = episodes;
+                                        self.abs_view = AbsView::Episodes(item_id);
+                                        self.apply_abs_filter_sort();
+                                        self.abs_state.select(Some(0));
+                                    }
+                                    Err(e) => {
+                                        self.notification = Some((
+                                            format!("ABS error: {}", e),
+                                            std::time::Instant::now(),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        AbsView::Episodes(item_id) => {
+                            if let Some(episode) = self.abs_episodes.get(i) {
+                                let ep_id = episode.id.clone();
+                                let item_id = item_id.clone();
+                                let resume_secs = episode.current_time;
+                                let total_duration = episode.duration.unwrap_or(0.0);
+                                let title = episode.title.clone();
+                                let description = episode.description.clone();
+                                let client = &self.abs_clients[self.active_abs_client];
+                                match rt.block_on(client.get_stream_url(
+                                    &item_id,
+                                    &ep_id,
+                                    resume_secs,
+                                )) {
+                                    Ok(stream_url) => {
+                                        self.abs_current_episode_id = Some(ep_id);
+                                        self.abs_current_library_item_id = Some(item_id);
+                                        self.play_abs_episode(
+                                            stream_url,
+                                            title,
+                                            description,
+                                            resume_secs,
+                                            total_duration,
+                                        );
+                                    }
+                                    Err(e) => {
+                                        self.notification = Some((
+                                            format!("ABS stream error: {}", e),
+                                            std::time::Instant::now(),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -842,6 +1044,102 @@ impl App {
                             }
                         } else {
                             let _ = tx.send(Err(format!("HTTP error: {}", response.status())));
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Err(format!("Connection error: {}", e)));
+                    }
+                }
+            });
+        }
+    }
+
+    /// Like `play_radio` but handles ABS episodes: sets `track_duration`, offsets
+    /// `playback_elapsed`, and uses an HTTP Range request so the audio actually starts
+    /// at `resume_secs` rather than byte 0 (ABS ignores `startOffset` for direct-play).
+    pub fn play_abs_episode(
+        &mut self,
+        stream_url: String,
+        title: String,
+        _description: Option<String>,
+        resume_secs: f64,
+        total_duration: f64,
+    ) {
+        self.current_track = Some(PathBuf::from(&title));
+        self.is_paused = false;
+        self.playback_start = Some(Instant::now());
+        self.playback_elapsed = if resume_secs > 0.0 {
+            Duration::from_secs_f64(resume_secs)
+        } else {
+            Duration::from_secs(0)
+        };
+        self.track_duration = if total_duration > 0.0 {
+            Some(Duration::from_secs_f64(total_duration))
+        } else {
+            None
+        };
+        self.last_error = None;
+
+        if let Some(sink) = &self.sink {
+            sink.stop();
+            let (tx, rx) = std::sync::mpsc::channel();
+            self.source_receiver = Some(rx);
+            let spectrum_data = self.spectrum_data.clone();
+            let client = self.http_client.clone();
+
+            std::thread::spawn(move || {
+                // Compute byte offset for resume via HEAD then Range GET.
+                // Falls back to full GET if the server doesn't expose Content-Length.
+                let range_start: Option<u64> = if resume_secs > 0.0 && total_duration > 0.0 {
+                    client
+                        .head(&stream_url)
+                        .send()
+                        .ok()
+                        .and_then(|r| {
+                            r.headers()
+                                .get("content-length")
+                                .and_then(|v| v.to_str().ok())
+                                .and_then(|s| s.parse::<u64>().ok())
+                        })
+                        .map(|file_size| {
+                            ((resume_secs / total_duration) * file_size as f64) as u64
+                        })
+                } else {
+                    None
+                };
+
+                let response = if let Some(start_byte) = range_start {
+                    client
+                        .get(&stream_url)
+                        .header("Range", format!("bytes={}-", start_byte))
+                        .send()
+                } else {
+                    client.get(&stream_url).send()
+                };
+
+                match response {
+                    Ok(resp) => {
+                        let status = resp.status();
+                        if status.is_success() || status.as_u16() == 206 {
+                            let reader = io::BufReader::new(resp);
+                            match Decoder::new(HttpStream::new(reader)) {
+                                Ok(decoder) => {
+                                    let source = decoder.convert_samples::<f32>();
+                                    let sample_rate = source.sample_rate();
+                                    let analyzer = AudioAnalyzer {
+                                        input: source,
+                                        buffer: Vec::with_capacity(2048),
+                                        spectrum_data,
+                                        sample_rate,
+                                    };
+                                    let _ = tx.send(Ok(Box::new(analyzer)));
+                                }
+                                Err(e) => {
+                                    let _ = tx.send(Err(format!("Decoder error: {}", e)));
+                                }
+                            }
+                        } else {
+                            let _ = tx.send(Err(format!("HTTP error: {}", status)));
                         }
                     }
                     Err(e) => {
@@ -1050,20 +1348,32 @@ impl App {
             self.source_receiver = None;
         }
 
-        // Check for auto-advance
-        if let Some(sink) = &self.sink
-            && sink.empty()
+        // Check for auto-advance.
+        let sink_empty = self.sink.as_ref().map(|s| s.empty()).unwrap_or(false);
+        let can_advance = sink_empty
             && !self.is_paused
             && self.current_track.is_some()
-        {
-            match self.loop_mode {
-                LoopMode::All => self.next_track(),
-                LoopMode::Track => {
-                    if let Some(path) = self.current_track.clone() {
-                        self.play_file(path);
+            && self.source_receiver.is_none();
+
+        if can_advance {
+            // ABS always autoplays the next episode (independent of loop mode)
+            if self.mode == AppMode::AudioBookshelf
+                && matches!(self.abs_view, AbsView::Episodes(_))
+                && !self.abs_episodes.is_empty()
+            {
+                self.abs_play_next_episode();
+            } else if let Some(sink) = &self.sink
+                && sink.empty()
+            {
+                match self.loop_mode {
+                    LoopMode::All => self.next_track(),
+                    LoopMode::Track => {
+                        if let Some(path) = self.current_track.clone() {
+                            self.play_file(path);
+                        }
                     }
+                    LoopMode::Off => {}
                 }
-                LoopMode::Off => {}
             }
         }
         self.update_mpris();
@@ -1247,6 +1557,15 @@ impl App {
                     }
                     KeyCode::Char('n') => {
                         *state = AddModalState::InputSubsonic {
+                            server_url: String::new(),
+                            username: String::new(),
+                            password: String::new(),
+                            focused_field: 0,
+                            original_url: None,
+                        };
+                    }
+                    KeyCode::Char('b') => {
+                        *state = AddModalState::InputAbs {
                             server_url: String::new(),
                             username: String::new(),
                             password: String::new(),
@@ -1539,6 +1858,105 @@ impl App {
                     }
                     _ => {}
                 },
+                AddModalState::InputAbs {
+                    server_url,
+                    username,
+                    password,
+                    focused_field,
+                    original_url,
+                } => match key {
+                    KeyCode::Esc => self.add_modal_state = None,
+                    KeyCode::Tab | KeyCode::Down => {
+                        *focused_field = (*focused_field + 1) % 3;
+                    }
+                    KeyCode::BackTab | KeyCode::Up => {
+                        *focused_field = if *focused_field > 0 {
+                            *focused_field - 1
+                        } else {
+                            2
+                        };
+                    }
+                    KeyCode::Enter => {
+                        if server_url.is_empty() || username.is_empty() || password.is_empty() {
+                            self.notification = Some((
+                                "Server URL, Username, and Password are required".to_string(),
+                                std::time::Instant::now(),
+                            ));
+                            return;
+                        }
+                        // Log in to obtain the API token
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        let token_result =
+                            rt.block_on(crate::audiobookshelf::AudioBookshelfClient::login(
+                                server_url, username, password,
+                            ));
+                        match token_result {
+                            Err(e) => {
+                                self.notification = Some((
+                                    format!("ABS login failed: {}", e),
+                                    std::time::Instant::now(),
+                                ));
+                            }
+                            Ok(token) => {
+                                let mut config =
+                                    crate::config::AppConfig::load().unwrap_or_default();
+                                let source = crate::config::AbsSourceConfig {
+                                    server_url: server_url.clone(),
+                                    username: username.clone(),
+                                    api_token: token,
+                                };
+                                if let Some(old_url) = original_url {
+                                    if let Some(abs) = &mut config.audiobookshelf
+                                        && let Some(idx) = abs
+                                            .sources
+                                            .iter()
+                                            .position(|s| s.server_url == *old_url)
+                                    {
+                                        abs.sources[idx] = source;
+                                    }
+                                } else {
+                                    if config.audiobookshelf.is_none() {
+                                        config.audiobookshelf =
+                                            Some(crate::config::AbsConfig::default());
+                                    }
+                                    if let Some(abs) = &mut config.audiobookshelf {
+                                        abs.sources.push(source);
+                                    }
+                                }
+                                if let Err(e) = config.save() {
+                                    self.notification =
+                                        Some((format!("Error: {}", e), std::time::Instant::now()));
+                                } else {
+                                    self.notification = Some((
+                                        format!("Saved AudioBookshelf: {}", server_url),
+                                        std::time::Instant::now(),
+                                    ));
+                                    self.reload_abs();
+                                    self.add_modal_state = None;
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        let target = match *focused_field {
+                            0 => server_url,
+                            1 => username,
+                            2 => password,
+                            _ => return,
+                        };
+                        target.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        let target = match *focused_field {
+                            0 => server_url,
+                            1 => username,
+                            2 => password,
+                            _ => return,
+                        };
+                        target.pop();
+                    }
+                    _ => {}
+                },
                 AddModalState::Confirmation {
                     message: _,
                     context,
@@ -1554,6 +1972,9 @@ impl App {
                             }
                             ConfirmationContext::DeleteSubsonic(url) => {
                                 ConfirmationContext::DeleteSubsonic(url.clone())
+                            }
+                            ConfirmationContext::DeleteAbs(url) => {
+                                ConfirmationContext::DeleteAbs(url.clone())
                             }
                         };
                         self.confirm_delete(&ctx);
@@ -1640,6 +2061,21 @@ impl App {
                     });
                 }
             }
+            AppMode::AudioBookshelf => {
+                if let AbsView::Servers = self.abs_view
+                    && let Some(i) = self.abs_state.selected()
+                    && i < self.abs_clients.len()
+                {
+                    let client = &self.abs_clients[i];
+                    self.add_modal_state = Some(AddModalState::Confirmation {
+                        message: format!(
+                            "Are you sure you want to delete AudioBookshelf Server '{}'?",
+                            client.config.server_url
+                        ),
+                        context: ConfirmationContext::DeleteAbs(client.config.server_url.clone()),
+                    });
+                }
+            }
             _ => (),
         }
     }
@@ -1655,6 +2091,9 @@ impl App {
             ConfirmationContext::DeleteSubsonic(server_url) => {
                 crate::config::delete_subsonic_from_config(server_url)
             }
+            ConfirmationContext::DeleteAbs(server_url) => {
+                crate::config::delete_abs_from_config(server_url)
+            }
         };
 
         if let Err(e) = result {
@@ -1665,6 +2104,92 @@ impl App {
             self.reload_stations();
             if matches!(context, ConfirmationContext::DeleteSubsonic(_)) {
                 self.reload_subsonic();
+            }
+            if matches!(context, ConfirmationContext::DeleteAbs(_)) {
+                self.reload_abs();
+            }
+        }
+    }
+
+    pub fn reload_abs(&mut self) {
+        if let Ok(config) = crate::config::AppConfig::load() {
+            if let Some(abs) = config.audiobookshelf {
+                self.abs_clients = abs
+                    .sources
+                    .into_iter()
+                    .map(crate::audiobookshelf::AudioBookshelfClient::new)
+                    .collect();
+            } else {
+                self.abs_clients.clear();
+            }
+            if self.abs_clients.is_empty() {
+                self.abs_libraries.clear();
+                self.abs_podcasts.clear();
+                self.abs_raw_episodes.clear();
+                self.abs_episodes.clear();
+                self.abs_state.select(None);
+                self.abs_view = AbsView::Servers;
+            } else {
+                self.abs_view = AbsView::Servers;
+                self.abs_state.select(Some(0));
+            }
+        }
+    }
+
+    /// Re-applies the current sort/filter to `abs_raw_episodes` → `abs_episodes`.
+    pub fn apply_abs_filter_sort(&mut self) {
+        let mut episodes = self.abs_raw_episodes.clone();
+        if self.abs_hide_played {
+            episodes.retain(|ep| !ep.is_finished);
+        }
+        if self.abs_sort_oldest_first {
+            episodes.sort_by_key(|ep| ep.published_at.unwrap_or(0));
+        } else {
+            episodes.sort_by_key(|ep| std::cmp::Reverse(ep.published_at.unwrap_or(0)));
+        }
+        self.abs_episodes = episodes;
+    }
+
+    /// Plays the next unfinished episode after the currently-playing one.
+    pub fn abs_play_next_episode(&mut self) {
+        let current_id = self.abs_current_episode_id.clone();
+        let item_id = match self.abs_current_library_item_id.clone() {
+            Some(id) => id,
+            None => return,
+        };
+
+        let start = match &current_id {
+            Some(id) => self
+                .abs_episodes
+                .iter()
+                .position(|ep| &ep.id == id)
+                .map(|pos| pos + 1)
+                .unwrap_or(0),
+            None => 0,
+        };
+
+        // Find next episode (skipping finished ones if filter is on)
+        let next = self.abs_episodes[start..]
+            .iter()
+            .find(|ep| !self.abs_hide_played || !ep.is_finished)
+            .cloned();
+
+        if let Some(episode) = next {
+            let ep_id = episode.id.clone();
+            let total_duration = episode.duration.unwrap_or(0.0);
+            let title = episode.title.clone();
+            let description = episode.description.clone();
+            let client = &self.abs_clients[self.active_abs_client];
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            match rt.block_on(client.get_stream_url(&item_id, &ep_id, 0.0)) {
+                Ok(stream_url) => {
+                    self.abs_current_episode_id = Some(ep_id);
+                    self.play_abs_episode(stream_url, title, description, 0.0, total_duration);
+                }
+                Err(e) => {
+                    self.notification =
+                        Some((format!("ABS autoplay error: {}", e), Instant::now()));
+                }
             }
         }
     }
@@ -1842,6 +2367,9 @@ impl App {
             AppMode::Subsonic => {
                 // Not supported yet
             }
+            AppMode::AudioBookshelf => {
+                // Not supported yet
+            }
         }
     }
 
@@ -1926,6 +2454,27 @@ impl App {
                 SubsonicView::Tracks(ref artist_id) => {
                     self.subsonic_view = SubsonicView::Albums(artist_id.clone());
                     self.subsonic_state.select(Some(0));
+                }
+            },
+            AppMode::AudioBookshelf => match &self.abs_view.clone() {
+                AbsView::Servers => {}
+                AbsView::Libraries => {
+                    self.abs_view = AbsView::Servers;
+                    self.abs_state.select(Some(self.active_abs_client));
+                }
+                AbsView::Podcasts(_) => {
+                    self.abs_view = AbsView::Libraries;
+                    self.abs_state.select(Some(0));
+                }
+                AbsView::Episodes(item_id) => {
+                    let idx = self
+                        .abs_podcasts
+                        .iter()
+                        .position(|p| &p.id == item_id)
+                        .unwrap_or(0);
+                    let lib_id = self.abs_active_library_id.clone();
+                    self.abs_view = AbsView::Podcasts(lib_id);
+                    self.abs_state.select(Some(idx));
                 }
             },
             _ => {}
@@ -2054,7 +2603,8 @@ pub fn run_app<B: Backend, E: EventSource>(
                                 AddModalState::Selection => false,
                                 AddModalState::InputStation { .. }
                                 | AddModalState::InputSource { .. }
-                                | AddModalState::InputSubsonic { .. } => {
+                                | AddModalState::InputSubsonic { .. }
+                                | AddModalState::InputAbs { .. } => {
                                     matches!(key.code, KeyCode::Char(_) | KeyCode::Backspace)
                                 }
                                 AddModalState::Confirmation { .. } => false,
@@ -2126,13 +2676,22 @@ pub fn run_app<B: Backend, E: EventSource>(
                                     AppMode::FileSystem => AppMode::Radio,
                                     AppMode::Radio => AppMode::Favorites,
                                     AppMode::Favorites => {
-                                        if app.subsonic_clients.is_empty() {
-                                            AppMode::FileSystem
-                                        } else {
+                                        if !app.subsonic_clients.is_empty() {
                                             AppMode::Subsonic
+                                        } else if !app.abs_clients.is_empty() {
+                                            AppMode::AudioBookshelf
+                                        } else {
+                                            AppMode::FileSystem
                                         }
                                     }
-                                    AppMode::Subsonic => AppMode::FileSystem,
+                                    AppMode::Subsonic => {
+                                        if !app.abs_clients.is_empty() {
+                                            AppMode::AudioBookshelf
+                                        } else {
+                                            AppMode::FileSystem
+                                        }
+                                    }
+                                    AppMode::AudioBookshelf => AppMode::FileSystem,
                                 };
                                 // Reset search when switching modes.
                                 app.cancel_search();
@@ -2179,10 +2738,32 @@ pub fn run_app<B: Backend, E: EventSource>(
                                 app.enter_directory()
                             }
                         }
+                        KeyCode::Char('p') => {
+                            if !is_repeat
+                                && app.mode == AppMode::AudioBookshelf
+                                && matches!(app.abs_view, AbsView::Episodes(_))
+                            {
+                                app.abs_hide_played = !app.abs_hide_played;
+                                app.apply_abs_filter_sort();
+                                app.abs_state.select(Some(0));
+                            }
+                        }
+                        KeyCode::Char('s') => {
+                            if !is_repeat
+                                && app.mode == AppMode::AudioBookshelf
+                                && matches!(app.abs_view, AbsView::Episodes(_))
+                            {
+                                app.abs_sort_oldest_first = !app.abs_sort_oldest_first;
+                                app.apply_abs_filter_sort();
+                                app.abs_state.select(Some(0));
+                            }
+                        }
                         KeyCode::Backspace | KeyCode::Delete => {
                             if app.mode == AppMode::Radio
                                 || (app.mode == AppMode::Subsonic
                                     && app.subsonic_view == SubsonicView::Servers)
+                                || (app.mode == AppMode::AudioBookshelf
+                                    && app.abs_view == AbsView::Servers)
                             {
                                 if !is_repeat {
                                     app.open_delete_modal();

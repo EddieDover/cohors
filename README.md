@@ -5,7 +5,8 @@ A TUI music player written in Rust.
 ## Features
 - File system navigation and playback (MP3, WAV, OGG, FLAC)
 - Audio visualization (Spectrum Analyzer)
-- Internet Radio and Subsonic support
+- Internet Radio and Subsonic/Navidrome support
+- AudioBookshelf podcast support (browse, filter, resume, autoplay)
 - Supports MPRIS (media playback controls on a system-wide level)
 - Built-in management for Radio Stations and Sources
 
@@ -18,25 +19,32 @@ I'm happy to hear your feedback and feature requests! I'm also very open to PRs 
 | Key | Action |
 | --- | --- |
 | `q` | Quit Application |
-| `TAB` | Toggle Mode (Files / Radio / Favorites) |
+| `TAB` | Toggle Mode (Files / Radio / Favorites / Subsonic / AudioBookshelf) |
 | `/` | Search / Filter |
 | `?` | Toggle Help / About |
 | `j` / `↓` | Move Selection Down |
 | `k` / `↑` | Move Selection Up |
 | `Enter` | Play Selection / Enter Directory |
-| `Backspace` | Go Up Directory or Delete Station/Source |
+| `Backspace` | Go Up / Delete Station or Source |
 | `Delete` | Delete Station/Source |
 | `Space` | Toggle Pause / Resume |
 | `+` / `=` | Volume Up |
 | `-` | Volume Down |
 | `→` | Next Track |
 | `←` | Previous Track |
-| `l` | Toggle Loop Mode (Off / Track/ Folder) |
+| `l` | Toggle Loop Mode (Off / Track / Folder) |
 | `h` | Toggle hidden files in File View Mode |
 | `x` | Export selected radio station to config |
-| `a` | Add Station/Source |
-| `e` | Edit Station/Source |
+| `a` | Add Station/Source/Server |
+| `e` | Edit Station/Source/Server |
 | `f` | Toggle Favorite |
+
+### AudioBookshelf Mode Keys
+
+| Key | Action |
+| --- | --- |
+| `p` | Toggle hide finished/played episodes |
+| `s` | Toggle episode sort order (newest-first / oldest-first) |
 
 ## Command Line Arguments
 
@@ -191,6 +199,49 @@ For the configuration above, the `json_url` (`https://api.example.com/stations.j
 
 The `container` field is set to `"stations"`, telling Cohors to look inside that property for the list. The `mapping` then connects fields like `name` to `station_name` and `stream_url` to `station_url`.
 
+
+## AudioBookshelf
+
+Cohors can connect to an [AudioBookshelf](https://www.audiobookshelf.org/) server to browse and play podcasts.
+
+### Adding a Server
+
+1. Press `TAB` until you reach the **AudioBookshelf** mode.
+2. Press `a` to open the Add menu, then press `b` to add an AudioBookshelf server.
+3. Enter your server URL, username, and password. The password is used only to obtain an API token and is never saved.
+
+### Browsing & Playing
+
+Navigation follows the same pattern as the rest of the app:
+
+- **Servers → Libraries → Podcasts → Episodes**: Press `Enter` to drill down, `Backspace` to go back.
+- Selecting an episode starts playback. In-progress episodes resume from where you left off.
+- When an episode finishes, the next episode plays automatically.
+
+### Episode Filters & Sorting
+
+While viewing an episode list:
+
+- Press `p` to toggle hiding episodes you have already finished.
+- Press `s` to toggle between newest-first and oldest-first order (useful for starting a podcast from episode 1).
+
+### Configuration
+
+The server token is stored in `config.json` under `audiobookshelf`. You can manage servers directly from the UI; there is no need to edit this manually.
+
+```json
+{
+  "audiobookshelf": {
+    "sources": [
+      {
+        "server_url": "http://my-abs-server:13378",
+        "username": "myuser",
+        "api_token": "<token obtained at login>"
+      }
+    ]
+  }
+}
+```
 
 ### Screenshots
 

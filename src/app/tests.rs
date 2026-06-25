@@ -1601,3 +1601,832 @@ fn test_favorites_toggle_station_logic() {
     app.favorites_state.select(Some(99)); // index out of bounds
     app.toggle_favorite(); // shouldn't panic
 }
+
+// ─── AudioBookshelf: apply_abs_filter_sort ───────────────────────────────────
+
+fn make_abs_ep(id: &str, published_at: i64, is_finished: bool) -> crate::audiobookshelf::AbsEpisode {
+    crate::audiobookshelf::AbsEpisode {
+        id: id.to_string(),
+        library_item_id: "item1".to_string(),
+        title: format!("Episode {id}"),
+        description: None,
+        published_at: Some(published_at),
+        duration: Some(3600.0),
+        is_finished,
+        current_time: 0.0,
+    }
+}
+
+#[test]
+fn test_abs_sort_newest_first() {
+    let mut app = App::new_test();
+    app.abs_sort_oldest_first = false;
+    app.abs_hide_played = false;
+    app.abs_raw_episodes = vec![
+        make_abs_ep("ep1", 1000, false),
+        make_abs_ep("ep2", 3000, false),
+        make_abs_ep("ep3", 2000, false),
+    ];
+    app.apply_abs_filter_sort();
+    assert_eq!(app.abs_episodes.len(), 3);
+    assert_eq!(app.abs_episodes[0].id, "ep2");
+    assert_eq!(app.abs_episodes[1].id, "ep3");
+    assert_eq!(app.abs_episodes[2].id, "ep1");
+}
+
+#[test]
+fn test_abs_sort_oldest_first() {
+    let mut app = App::new_test();
+    app.abs_sort_oldest_first = true;
+    app.abs_hide_played = false;
+    app.abs_raw_episodes = vec![
+        make_abs_ep("ep1", 1000, false),
+        make_abs_ep("ep2", 3000, false),
+        make_abs_ep("ep3", 2000, false),
+    ];
+    app.apply_abs_filter_sort();
+    assert_eq!(app.abs_episodes[0].id, "ep1");
+    assert_eq!(app.abs_episodes[1].id, "ep3");
+    assert_eq!(app.abs_episodes[2].id, "ep2");
+}
+
+#[test]
+fn test_abs_filter_hide_played() {
+    let mut app = App::new_test();
+    app.abs_hide_played = true;
+    app.abs_raw_episodes = vec![
+        make_abs_ep("ep1", 1000, false),
+        make_abs_ep("ep2", 2000, true),
+        make_abs_ep("ep3", 3000, false),
+    ];
+    app.apply_abs_filter_sort();
+    assert_eq!(app.abs_episodes.len(), 2);
+    assert!(!app.abs_episodes.iter().any(|e| e.id == "ep2"));
+}
+
+#[test]
+fn test_abs_filter_and_sort_combined() {
+    let mut app = App::new_test();
+    app.abs_hide_played = true;
+    app.abs_sort_oldest_first = true;
+    app.abs_raw_episodes = vec![
+        make_abs_ep("ep1", 1000, true),  // finished — filtered out
+        make_abs_ep("ep2", 3000, false),
+        make_abs_ep("ep3", 2000, false),
+    ];
+    app.apply_abs_filter_sort();
+    assert_eq!(app.abs_episodes.len(), 2);
+    assert_eq!(app.abs_episodes[0].id, "ep3"); // older of the two remaining
+    assert_eq!(app.abs_episodes[1].id, "ep2");
+}
+
+// ─── AudioBookshelf: navigation (next / previous) ────────────────────────────
+
+fn make_abs_library(id: &str) -> crate::audiobookshelf::AbsLibrary {
+    crate::audiobookshelf::AbsLibrary {
+        id: id.to_string(),
+        name: id.to_string(),
+        media_type: "podcast".to_string(),
+    }
+}
+
+#[test]
+fn test_abs_next_wraps_around() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Libraries;
+    app.abs_libraries = vec![make_abs_library("l1"), make_abs_library("l2")];
+    app.abs_state.select(Some(0));
+
+    app.next();
+    assert_eq!(app.abs_state.selected(), Some(1));
+    app.next();
+    assert_eq!(app.abs_state.selected(), Some(0)); // wrap
+}
+
+#[test]
+fn test_abs_previous_wraps_around() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Libraries;
+    app.abs_libraries = vec![make_abs_library("l1"), make_abs_library("l2")];
+    app.abs_state.select(Some(0));
+
+    app.previous();
+    assert_eq!(app.abs_state.selected(), Some(1)); // wrap to end
+    app.previous();
+    assert_eq!(app.abs_state.selected(), Some(0));
+}
+
+// ─── AudioBookshelf: go_up ───────────────────────────────────────────────────
+
+#[test]
+fn test_abs_go_up_libraries_to_servers() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Libraries;
+    app.go_up();
+    assert!(matches!(app.abs_view, AbsView::Servers));
+}
+
+#[test]
+fn test_abs_go_up_podcasts_to_libraries() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Podcasts("lib1".to_string());
+    app.go_up();
+    assert!(matches!(app.abs_view, AbsView::Libraries));
+}
+
+#[test]
+fn test_abs_go_up_episodes_to_podcasts() {
+    use crate::audiobookshelf::{AbsPodcast, AbsPodcastMedia, AbsPodcastMetadata};
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_active_library_id = "lib1".to_string();
+    app.abs_podcasts = vec![AbsPodcast {
+        id: "pod1".to_string(),
+        media: AbsPodcastMedia {
+            metadata: AbsPodcastMetadata {
+                title: "Pod".to_string(),
+                author: None,
+                description: None,
+            },
+            episodes: vec![],
+            num_episodes: None,
+        },
+    }];
+    app.abs_view = AbsView::Episodes("pod1".to_string());
+    app.go_up();
+    assert!(matches!(&app.abs_view, AbsView::Podcasts(id) if id == "lib1"));
+    assert_eq!(app.abs_state.selected(), Some(0));
+}
+
+// ─── AudioBookshelf: abs_play_next_episode early exits ───────────────────────
+
+#[test]
+fn test_abs_play_next_no_library_item_id_returns_early() {
+    let mut app = App::new_test();
+    app.abs_current_library_item_id = None;
+    app.abs_current_episode_id = Some("ep1".to_string());
+    app.abs_raw_episodes = vec![make_abs_ep("ep1", 1000, false), make_abs_ep("ep2", 2000, false)];
+    app.apply_abs_filter_sort();
+    // Must not panic; current_episode_id unchanged
+    app.abs_play_next_episode();
+    assert_eq!(app.abs_current_episode_id, Some("ep1".to_string()));
+}
+
+#[test]
+fn test_abs_play_next_no_episodes_does_nothing() {
+    let mut app = App::new_test();
+    app.abs_current_library_item_id = Some("item1".to_string());
+    app.abs_current_episode_id = Some("ep1".to_string());
+    // abs_episodes is empty — no next to find
+    app.abs_play_next_episode();
+    assert_eq!(app.abs_current_episode_id, Some("ep1".to_string()));
+}
+
+// ─── AudioBookshelf: search in ABS mode ──────────────────────────────────────
+
+#[test]
+fn test_abs_search_input_resets_selection() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_state.select(Some(2));
+    app.on_search_input('a');
+    assert_eq!(app.abs_state.selected(), Some(0));
+}
+
+#[test]
+fn test_abs_search_backspace_resets_selection() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.search_query = "ab".to_string();
+    app.abs_state.select(Some(3));
+    app.on_search_backspace();
+    assert_eq!(app.abs_state.selected(), Some(0));
+}
+
+#[test]
+fn test_abs_cancel_search_resets_selection() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.is_searching = true;
+    app.search_query = "x".to_string();
+    app.abs_state.select(Some(5));
+    app.cancel_search();
+    assert!(!app.is_searching);
+    assert_eq!(app.abs_state.selected(), Some(0));
+}
+
+// ─── HttpStream: edge cases ───────────────────────────────────────────────────
+
+#[test]
+fn test_http_stream_seek_from_end_errors() {
+    use std::io::{Seek, SeekFrom};
+    let cursor = std::io::Cursor::new(b"data");
+    let mut stream = HttpStream::new(cursor);
+    assert!(stream.seek(SeekFrom::End(0)).is_err());
+}
+
+#[test]
+fn test_http_stream_seek_to_current_pos_succeeds() {
+    use std::io::{Read, Seek, SeekFrom};
+    let cursor = std::io::Cursor::new(b"Hello World");
+    let mut stream = HttpStream::new(cursor);
+
+    let mut buf = [0u8; 5];
+    stream.read_exact(&mut buf).unwrap();
+    assert_eq!(stream.pos, 5);
+
+    // Seeking to an absolute position equal to current pos should succeed
+    let new_pos = stream.seek(SeekFrom::Start(5)).unwrap();
+    assert_eq!(new_pos, 5);
+}
+
+#[test]
+fn test_http_stream_seek_beyond_buffer_errors() {
+    use std::io::{Seek, SeekFrom};
+    // Empty stream — buffer is empty, seeking to byte 10 is beyond it
+    let cursor = std::io::Cursor::new(b"");
+    let mut stream = HttpStream::new(cursor);
+    assert!(stream.seek(SeekFrom::Start(10)).is_err());
+}
+
+// ─── next() / previous() coverage for remaining modes ───────────────────────
+
+#[test]
+fn test_radio_next_no_selection() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Radio;
+    app.radio_state.select(None);
+    app.next(); // None => 0 branch
+    assert_eq!(app.radio_state.selected(), Some(0));
+}
+
+#[test]
+fn test_favorites_next_and_previous() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Favorites;
+    app.favorites.files = vec![PathBuf::from("a"), PathBuf::from("b"), PathBuf::from("c")];
+
+    app.favorites_state.select(Some(0));
+    app.next();
+    assert_eq!(app.favorites_state.selected(), Some(1));
+    app.next();
+    assert_eq!(app.favorites_state.selected(), Some(2));
+    app.next(); // wrap
+    assert_eq!(app.favorites_state.selected(), Some(0));
+
+    app.previous(); // wrap to end
+    assert_eq!(app.favorites_state.selected(), Some(2));
+    app.previous();
+    assert_eq!(app.favorites_state.selected(), Some(1));
+}
+
+#[test]
+fn test_favorites_next_no_selection() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Favorites;
+    app.favorites.files = vec![PathBuf::from("a")];
+    app.favorites_state.select(None);
+    app.next();
+    assert_eq!(app.favorites_state.selected(), Some(0));
+}
+
+#[test]
+fn test_favorites_previous_no_selection() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Favorites;
+    app.favorites.files = vec![PathBuf::from("a")];
+    app.favorites_state.select(None);
+    app.previous();
+    assert_eq!(app.favorites_state.selected(), Some(0));
+}
+
+fn make_subsonic_client() -> crate::subsonic::SubsonicClient {
+    crate::subsonic::SubsonicClient::new(crate::config::SubsonicSourceConfig {
+        server_url: "http://navi.test".to_string(),
+        username: "u".to_string(),
+        password: Some("p".to_string()),
+        auth_token: None,
+    })
+}
+
+#[test]
+fn test_subsonic_next_servers_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = SubsonicView::Servers;
+    app.subsonic_clients = vec![make_subsonic_client(), make_subsonic_client()];
+    app.subsonic_state.select(Some(0));
+    app.next();
+    assert_eq!(app.subsonic_state.selected(), Some(1));
+    app.next(); // wrap
+    assert_eq!(app.subsonic_state.selected(), Some(0));
+}
+
+#[test]
+fn test_subsonic_next_artists_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = SubsonicView::Artists;
+    app.subsonic_artists = vec![
+        crate::subsonic::Artist { id: "1".to_string(), name: "A".to_string(), album_count: None },
+        crate::subsonic::Artist { id: "2".to_string(), name: "B".to_string(), album_count: None },
+    ];
+    app.subsonic_state.select(Some(0));
+    app.next();
+    assert_eq!(app.subsonic_state.selected(), Some(1));
+}
+
+#[test]
+fn test_subsonic_next_albums_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = SubsonicView::Albums("a1".to_string());
+    app.subsonic_albums = vec![
+        crate::subsonic::Album { id: "1".to_string(), name: "X".to_string(), artist: None, artist_id: None, song_count: None, duration: None, year: None },
+        crate::subsonic::Album { id: "2".to_string(), name: "Y".to_string(), artist: None, artist_id: None, song_count: None, duration: None, year: None },
+    ];
+    app.subsonic_state.select(Some(0));
+    app.next();
+    assert_eq!(app.subsonic_state.selected(), Some(1));
+}
+
+#[test]
+fn test_subsonic_next_tracks_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = SubsonicView::Tracks("al1".to_string());
+    app.subsonic_tracks = vec![
+        crate::subsonic::Track { id: "1".to_string(), parent: None, is_dir: false, title: "T1".to_string(), album: None, artist: None, track: None, duration: None, size: None },
+        crate::subsonic::Track { id: "2".to_string(), parent: None, is_dir: false, title: "T2".to_string(), album: None, artist: None, track: None, duration: None, size: None },
+    ];
+    app.subsonic_state.select(Some(0));
+    app.next();
+    assert_eq!(app.subsonic_state.selected(), Some(1));
+    app.next(); // wrap
+    assert_eq!(app.subsonic_state.selected(), Some(0));
+}
+
+#[test]
+fn test_subsonic_next_no_selection() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = SubsonicView::Servers;
+    app.subsonic_clients = vec![make_subsonic_client()];
+    app.subsonic_state.select(None);
+    app.next();
+    assert_eq!(app.subsonic_state.selected(), Some(0));
+}
+
+#[test]
+fn test_subsonic_previous_servers_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = SubsonicView::Servers;
+    app.subsonic_clients = vec![make_subsonic_client(), make_subsonic_client()];
+    app.subsonic_state.select(Some(0));
+    app.previous(); // wrap to end
+    assert_eq!(app.subsonic_state.selected(), Some(1));
+}
+
+#[test]
+fn test_subsonic_previous_artists_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = SubsonicView::Artists;
+    app.subsonic_artists = vec![
+        crate::subsonic::Artist { id: "1".to_string(), name: "A".to_string(), album_count: None },
+        crate::subsonic::Artist { id: "2".to_string(), name: "B".to_string(), album_count: None },
+    ];
+    app.subsonic_state.select(Some(1));
+    app.previous();
+    assert_eq!(app.subsonic_state.selected(), Some(0));
+}
+
+#[test]
+fn test_subsonic_previous_albums_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = SubsonicView::Albums("a1".to_string());
+    app.subsonic_albums = vec![
+        crate::subsonic::Album { id: "1".to_string(), name: "X".to_string(), artist: None, artist_id: None, song_count: None, duration: None, year: None },
+        crate::subsonic::Album { id: "2".to_string(), name: "Y".to_string(), artist: None, artist_id: None, song_count: None, duration: None, year: None },
+    ];
+    app.subsonic_state.select(Some(1));
+    app.previous();
+    assert_eq!(app.subsonic_state.selected(), Some(0));
+}
+
+#[test]
+fn test_subsonic_previous_tracks_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = SubsonicView::Tracks("al1".to_string());
+    app.subsonic_tracks = vec![
+        crate::subsonic::Track { id: "1".to_string(), parent: None, is_dir: false, title: "T1".to_string(), album: None, artist: None, track: None, duration: None, size: None },
+        crate::subsonic::Track { id: "2".to_string(), parent: None, is_dir: false, title: "T2".to_string(), album: None, artist: None, track: None, duration: None, size: None },
+    ];
+    app.subsonic_state.select(Some(0));
+    app.previous(); // wrap to end
+    assert_eq!(app.subsonic_state.selected(), Some(1));
+}
+
+#[test]
+fn test_subsonic_previous_no_selection() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_view = SubsonicView::Servers;
+    app.subsonic_clients = vec![make_subsonic_client()];
+    app.subsonic_state.select(None);
+    app.previous();
+    assert_eq!(app.subsonic_state.selected(), Some(0));
+}
+
+#[test]
+fn test_abs_next_servers_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Servers;
+    app.abs_clients = vec![
+        crate::audiobookshelf::AudioBookshelfClient::new(crate::config::AbsSourceConfig {
+            server_url: "http://abs1".to_string(), username: "u".to_string(), api_token: "t".to_string(),
+        }),
+        crate::audiobookshelf::AudioBookshelfClient::new(crate::config::AbsSourceConfig {
+            server_url: "http://abs2".to_string(), username: "u".to_string(), api_token: "t".to_string(),
+        }),
+    ];
+    app.abs_state.select(Some(0));
+    app.next();
+    assert_eq!(app.abs_state.selected(), Some(1));
+    app.next(); // wrap
+    assert_eq!(app.abs_state.selected(), Some(0));
+}
+
+#[test]
+fn test_abs_next_podcasts_view() {
+    use crate::audiobookshelf::{AbsPodcast, AbsPodcastMedia, AbsPodcastMetadata};
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Podcasts("lib1".to_string());
+    app.abs_podcasts = vec![
+        AbsPodcast { id: "p1".to_string(), media: AbsPodcastMedia { metadata: AbsPodcastMetadata { title: "A".to_string(), author: None, description: None }, episodes: vec![], num_episodes: None } },
+        AbsPodcast { id: "p2".to_string(), media: AbsPodcastMedia { metadata: AbsPodcastMetadata { title: "B".to_string(), author: None, description: None }, episodes: vec![], num_episodes: None } },
+    ];
+    app.abs_state.select(Some(0));
+    app.next();
+    assert_eq!(app.abs_state.selected(), Some(1));
+}
+
+#[test]
+fn test_abs_next_episodes_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Episodes("pod1".to_string());
+    app.abs_episodes = vec![make_abs_ep("e1", 1000, false), make_abs_ep("e2", 2000, false)];
+    app.abs_state.select(Some(0));
+    app.next();
+    assert_eq!(app.abs_state.selected(), Some(1));
+    app.next(); // wrap
+    assert_eq!(app.abs_state.selected(), Some(0));
+}
+
+#[test]
+fn test_abs_next_no_selection() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Libraries;
+    app.abs_libraries = vec![make_abs_library("l1")];
+    app.abs_state.select(None);
+    app.next();
+    assert_eq!(app.abs_state.selected(), Some(0));
+}
+
+#[test]
+fn test_abs_previous_servers_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Servers;
+    app.abs_clients = vec![
+        crate::audiobookshelf::AudioBookshelfClient::new(crate::config::AbsSourceConfig {
+            server_url: "http://abs1".to_string(), username: "u".to_string(), api_token: "t".to_string(),
+        }),
+        crate::audiobookshelf::AudioBookshelfClient::new(crate::config::AbsSourceConfig {
+            server_url: "http://abs2".to_string(), username: "u".to_string(), api_token: "t".to_string(),
+        }),
+    ];
+    app.abs_state.select(Some(0));
+    app.previous(); // wrap to end
+    assert_eq!(app.abs_state.selected(), Some(1));
+}
+
+#[test]
+fn test_abs_previous_podcasts_view() {
+    use crate::audiobookshelf::{AbsPodcast, AbsPodcastMedia, AbsPodcastMetadata};
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Podcasts("lib1".to_string());
+    app.abs_podcasts = vec![
+        AbsPodcast { id: "p1".to_string(), media: AbsPodcastMedia { metadata: AbsPodcastMetadata { title: "A".to_string(), author: None, description: None }, episodes: vec![], num_episodes: None } },
+        AbsPodcast { id: "p2".to_string(), media: AbsPodcastMedia { metadata: AbsPodcastMetadata { title: "B".to_string(), author: None, description: None }, episodes: vec![], num_episodes: None } },
+    ];
+    app.abs_state.select(Some(1));
+    app.previous();
+    assert_eq!(app.abs_state.selected(), Some(0));
+}
+
+#[test]
+fn test_abs_previous_episodes_view() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Episodes("pod1".to_string());
+    app.abs_episodes = vec![make_abs_ep("e1", 1000, false), make_abs_ep("e2", 2000, false)];
+    app.abs_state.select(Some(0));
+    app.previous(); // wrap to end
+    assert_eq!(app.abs_state.selected(), Some(1));
+}
+
+#[test]
+fn test_abs_previous_no_selection() {
+    let mut app = App::new_test();
+    app.mode = AppMode::AudioBookshelf;
+    app.abs_view = AbsView::Libraries;
+    app.abs_libraries = vec![make_abs_library("l1")];
+    app.abs_state.select(None);
+    app.previous();
+    assert_eq!(app.abs_state.selected(), Some(0));
+}
+
+// ─── AddModal: Selection → InputAbs via Char('b') ────────────────────────────
+
+#[test]
+fn test_add_modal_selection_char_b_opens_input_abs() {
+    let mut app = App::new_test();
+    app.add_modal_state = Some(AddModalState::Selection);
+    app.handle_add_modal_input(KeyCode::Char('b'));
+    assert!(matches!(app.add_modal_state, Some(AddModalState::InputAbs { .. })));
+}
+
+// ─── abs_play_next_episode: body coverage ────────────────────────────────────
+
+#[test]
+fn test_abs_play_next_all_episodes_filtered_out() {
+    // Covers the None => 0 branch and the find-returning-None path (no network).
+    let mut app = App::new_test();
+    app.abs_current_library_item_id = Some("pod1".to_string());
+    app.abs_current_episode_id = None; // covers None => 0 branch
+    app.abs_episodes = vec![make_abs_ep("ep1", 1000, true)]; // finished
+    app.abs_hide_played = true; // filter them out → find returns None → no network call
+    app.abs_clients = vec![crate::audiobookshelf::AudioBookshelfClient::new(
+        crate::config::AbsSourceConfig {
+            server_url: "http://127.0.0.1:1".to_string(),
+            username: "u".to_string(),
+            api_token: "t".to_string(),
+        },
+    )];
+    app.abs_play_next_episode(); // should not panic and make no network call
+    assert!(app.notification.is_none());
+}
+
+#[test]
+fn test_abs_play_next_network_fail_covers_err_branch() {
+    // Covers the Some(id) → position path AND the Err branch from the network call.
+    // Port 1 on loopback fails with ECONNREFUSED instantly.
+    let mut app = App::new_test();
+    app.abs_current_library_item_id = Some("pod1".to_string());
+    // current episode ep0 is NOT in abs_episodes → unwrap_or(0) kicks in, but
+    // more importantly this exercises the Some(id) → position branch.
+    app.abs_current_episode_id = Some("ep0".to_string());
+    app.abs_episodes = vec![make_abs_ep("ep1", 1000, false)];
+    app.abs_hide_played = false;
+    app.abs_clients = vec![crate::audiobookshelf::AudioBookshelfClient::new(
+        crate::config::AbsSourceConfig {
+            server_url: "http://127.0.0.1:1".to_string(), // guaranteed ECONNREFUSED
+            username: "u".to_string(),
+            api_token: "t".to_string(),
+        },
+    )];
+    app.abs_play_next_episode();
+    // The Err branch sets a notification
+    assert!(app.notification.is_some());
+}
+
+// ─── enter_directory: Subsonic with no clients ───────────────────────────────
+
+#[test]
+fn test_enter_directory_subsonic_no_clients_returns_early() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.subsonic_clients = vec![];
+    app.subsonic_state.select(Some(0));
+    app.enter_directory(); // hits the `return` at line 809
+}
+
+// ─── Search in Subsonic / Favorites modes ───────────────────────────────────
+
+#[test]
+fn test_subsonic_search_input_and_cancel() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Subsonic;
+    app.is_searching = true;
+    app.subsonic_state.select(Some(2));
+
+    app.on_search_input('a');
+    assert_eq!(app.subsonic_state.selected(), Some(0));
+
+    app.on_search_backspace();
+    assert_eq!(app.subsonic_state.selected(), Some(0));
+
+    app.cancel_search();
+    assert!(!app.is_searching);
+    assert_eq!(app.subsonic_state.selected(), Some(0));
+}
+
+#[test]
+fn test_favorites_search_input_and_cancel() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Favorites;
+    app.is_searching = true;
+    app.favorites_state.select(Some(3));
+
+    app.on_search_input('x');
+    assert_eq!(app.favorites_state.selected(), Some(0));
+
+    app.on_search_backspace();
+    assert_eq!(app.favorites_state.selected(), Some(0));
+
+    app.cancel_search();
+    assert!(!app.is_searching);
+    assert_eq!(app.favorites_state.selected(), Some(0));
+}
+
+// ─── enter_directory: Radio toggle-group and Favorites station ───────────────
+
+#[test]
+fn test_enter_directory_radio_toggle_group() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Radio;
+    app.radio_groups = vec![crate::radio::RadioGroup {
+        title: "Test Group".to_string(),
+        stations: vec![],
+        is_expanded: false,
+    }];
+    app.update_search_results();
+    app.radio_state.select(Some(0)); // group header
+
+    app.enter_directory();
+
+    assert!(app.radio_groups[0].is_expanded);
+}
+
+#[test]
+fn test_enter_directory_radio_toggle_group_collapse() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Radio;
+    app.radio_groups = vec![crate::radio::RadioGroup {
+        title: "My Group".to_string(),
+        stations: vec![],
+        is_expanded: true,
+    }];
+    app.update_search_results();
+    app.radio_state.select(Some(0));
+
+    app.enter_directory(); // collapse
+
+    assert!(!app.radio_groups[0].is_expanded);
+}
+
+#[test]
+fn test_enter_directory_favorites_station() {
+    let mut app = App::new_test();
+    app.mode = AppMode::Favorites;
+    app.favorites.stations = vec![crate::radio::RadioStation {
+        name: "Test Station".to_string(),
+        url: "http://test.local/stream".to_string(),
+        description: None,
+        homepage: None,
+        tags: None,
+        last_playing: None,
+    }];
+    // files is empty, station is at index 0
+    app.favorites_state.select(Some(0));
+    app.enter_directory(); // plays the station
+    // Just verify it doesn't panic; play_radio spawns a thread
+}
+
+// ─── Additional edge-case coverage ───────────────────────────────────────────
+
+#[test]
+fn test_radio_previous_no_selection() {
+    // Covers None => 0 branch in previous() for Radio mode
+    let mut app = App::new_test();
+    app.mode = AppMode::Radio;
+    app.radio_groups = vec![crate::radio::RadioGroup {
+        title: "G".to_string(),
+        stations: vec![],
+        is_expanded: false,
+    }];
+    app.update_search_results();
+    app.radio_state.select(None);
+    app.previous();
+    assert_eq!(app.radio_state.selected(), Some(0));
+}
+
+#[test]
+fn test_enter_directory_filesystem_no_selection() {
+    // Covers the None branch of the if-let in FileSystem enter_directory
+    let mut app = App::new_test();
+    app.mode = AppMode::FileSystem;
+    app.state.select(None);
+    app.enter_directory(); // no-op, should not panic
+}
+
+#[test]
+fn test_enter_directory_favorites_no_selection() {
+    // Covers the None branch of favorites_state.selected()
+    let mut app = App::new_test();
+    app.mode = AppMode::Favorites;
+    app.favorites_state.select(None);
+    app.enter_directory(); // no-op
+}
+
+#[test]
+fn test_enter_directory_radio_no_groups_action_none() {
+    // Covers the None => {} arm when no groups match (action stays None)
+    let mut app = App::new_test();
+    app.mode = AppMode::Radio;
+    // No groups → filtered_radio_groups empty → loop never fires → action = None
+    app.radio_state.select(Some(0));
+    app.enter_directory(); // reaches None => {}
+}
+
+#[test]
+fn test_enter_directory_radio_loop_skips_expanded_group() {
+    // Covers current_idx += group.stations.len() when selection is past an expanded group
+    let station = crate::radio::RadioStation {
+        name: "S1".to_string(),
+        url: "http://s1".to_string(),
+        description: None,
+        homepage: None,
+        tags: None,
+        last_playing: None,
+    };
+    let mut app = App::new_test();
+    app.mode = AppMode::Radio;
+    app.radio_groups = vec![
+        crate::radio::RadioGroup {
+            title: "Group 1".to_string(),
+            stations: vec![station],
+            is_expanded: true,
+        },
+        crate::radio::RadioGroup {
+            title: "Group 2".to_string(),
+            stations: vec![],
+            is_expanded: false,
+        },
+    ];
+    app.update_search_results();
+    // Index layout: 0=G1header, 1=S1, 2=G2header
+    // Selecting G2header (index 2) forces the loop to skip past G1's stations
+    app.radio_state.select(Some(2));
+    app.enter_directory(); // ToggleGroup(1) after skipping G1's expanded stations
+    assert!(app.radio_groups[1].is_expanded);
+}
+
+#[test]
+fn test_get_selected_station_past_first_group() {
+    // Covers the current_idx += group.stations.len() path and the final None return
+    let make_station = |name: &str, url: &str| crate::radio::RadioStation {
+        name: name.to_string(),
+        url: url.to_string(),
+        description: None,
+        homepage: None,
+        tags: None,
+        last_playing: None,
+    };
+    let mut app = App::new_test();
+    app.radio_groups = vec![
+        crate::radio::RadioGroup {
+            title: "G1".to_string(),
+            stations: vec![make_station("S1", "http://s1"), make_station("S2", "http://s2")],
+            is_expanded: true,
+        },
+        crate::radio::RadioGroup {
+            title: "G2".to_string(),
+            stations: vec![make_station("S3", "http://s3")],
+            is_expanded: true,
+        },
+    ];
+    app.update_search_results();
+    // Index layout: 0=G1h, 1=S1, 2=S2, 3=G2h, 4=S3
+    // G2 header → should return None
+    app.radio_state.select(Some(3));
+    assert!(app.get_selected_station().is_none());
+    // S3 → should return Some, requiring loop to skip G1's stations
+    app.radio_state.select(Some(4));
+    let s = app.get_selected_station();
+    assert!(s.is_some());
+    assert_eq!(s.unwrap().name, "S3");
+}
